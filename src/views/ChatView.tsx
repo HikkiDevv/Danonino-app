@@ -1,19 +1,48 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Image, Mic, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
+import { Send, Image, Mic, Sparkles, RefreshCw, AlertCircle, Volume2, VolumeX, PhoneCall } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { ChatMessage, AgentStatus } from '../types';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
+import { SpeechSynthesisTTS } from '../services/liveAudio';
 
 interface ChatViewProps {
   status: AgentStatus | null;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const ttsRef = useRef<SpeechSynthesisTTS | null>(null);
+
+  useEffect(() => {
+    ttsRef.current = new SpeechSynthesisTTS();
+    return () => {
+      ttsRef.current?.cancel();
+    };
+  }, []);
+
+  const toggleSpeak = (id: string, text: string) => {
+    if (!ttsRef.current) return;
+    if (speakingMsgId === id) {
+      ttsRef.current.cancel();
+      setSpeakingMsgId(null);
+    } else {
+      ttsRef.current.cancel();
+      setSpeakingMsgId(id);
+      ttsRef.current.speak(
+        text,
+        () => setSpeakingMsgId(id),
+        () => setSpeakingMsgId(null),
+        () => setSpeakingMsgId(null)
+      );
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,13 +131,23 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
           <Sparkles className="w-3.5 h-3.5 text-danonino-cyan" />
           <span>America/Lima: {status?.tiempo.horaOficial || '00:00'} ({status?.tiempo.momentoDia || 'noche'})</span>
         </div>
-        <button
-          onClick={loadHistory}
-          className="p-1 hover:text-danonino-cyan transition-colors"
-          title="Recargar historial"
-        >
-          <RefreshCw className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/live')}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-danonino-cyan/10 border border-danonino-cyan/30 text-danonino-cyan hover:bg-danonino-cyan/20 transition-all font-mono text-[10px]"
+            title="Llamada Danonino Live"
+          >
+            <PhoneCall className="w-3 h-3" />
+            <span>Live</span>
+          </button>
+          <button
+            onClick={loadHistory}
+            className="p-1 hover:text-danonino-cyan transition-colors"
+            title="Recargar historial"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       {/* Lista de Mensajes */}
@@ -142,11 +181,32 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
                   <div
-                    className={`text-[9px] mt-1 font-mono text-right ${
+                    className={`text-[9px] mt-1.5 font-mono flex items-center justify-between ${
                       isMe ? 'text-blue-200' : 'text-slate-500'
                     }`}
                   >
-                    {msg.timestamp}
+                    {!isMe && (
+                      <button
+                        onClick={() => toggleSpeak(String(msg.id), msg.text)}
+                        className={`flex items-center gap-1 hover:text-danonino-cyan transition-colors ${
+                          speakingMsgId === String(msg.id) ? 'text-danonino-cyan font-bold animate-pulse' : ''
+                        }`}
+                        title="Escuchar respuesta"
+                      >
+                        {speakingMsgId === String(msg.id) ? (
+                          <>
+                            <VolumeX className="w-3 h-3" />
+                            <span>Detener</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3 h-3" />
+                            <span>Escuchar</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <span className="ml-auto">{msg.timestamp}</span>
                   </div>
                 </div>
               </div>

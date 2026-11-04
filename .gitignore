@@ -16,3 +16,5 @@ android/app/*.iml
 android/local.properties
 android/captures/
 .gradle/
+*.apk
+*.zip

@@ -102,6 +102,38 @@ export const api = {
     return res.json();
   },
 
+  async sendLiveInteraction(
+    message: string,
+    imageBase64?: string,
+    streamType: string = 'voice_only',
+    sessionId: string = 'live_session'
+  ): Promise<{ ok: boolean; reply: string; interrupted?: boolean; sessionId: string; streamType: string; latencyMs: number; tokensEst: number; hasVisual: boolean }> {
+    const res = await fetch(`${getBaseApiUrl()}/live/interact`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        message,
+        imageBase64,
+        streamType,
+        sessionId,
+        sender: 'Dan',
+        chatId: 'app_user'
+      })
+    });
+    if (!res.ok) throw new Error(`Error en Danonino Live: ${res.statusText}`);
+    return res.json();
+  },
+
+  async cancelLiveTask(sessionId: string = 'live_session'): Promise<{ ok: boolean; cancelled: boolean }> {
+    const res = await fetch(`${getBaseApiUrl()}/live/cancel`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ sessionId })
+    });
+    if (!res.ok) throw new Error(`Error cancelando tarea en vivo: ${res.statusText}`);
+    return res.json();
+  },
+
   subscribeEvents(onEvent: (event: { type: string; payload?: any; timestamp: string }) => void): () => void {
     const sseUrl = `${getBaseApiUrl()}/events?token=${encodeURIComponent(getAuthToken())}`;
     const eventSource = new EventSource(sseUrl);

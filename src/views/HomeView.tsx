@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   Zap,
   Activity,
-  Lightbulb
+  Lightbulb,
+  PhoneCall
 } from 'lucide-react';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
 import { AgentStatus, HabitatState } from '../types';
@@ -59,10 +60,18 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
         </div>
 
         {/* Botones de Acción Primarios */}
-        <div className="grid grid-cols-2 gap-3 mt-5">
+        <div className="grid grid-cols-2 gap-2.5 mt-5">
+          <button
+            onClick={() => navigate('/live')}
+            className="col-span-2 flex items-center justify-center gap-2 bg-gradient-to-r from-danonino-cyan via-danonino-lavender to-danonino-violet text-danonino-bg font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-danonino-cyan/20 transition-all active:scale-95 text-xs"
+          >
+            <PhoneCall className="w-4 h-4 text-danonino-bg" />
+            <span>Llamada Multimodal en Vivo (Live)</span>
+          </button>
+
           <button
             onClick={() => navigate('/chat')}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-danonino-violet to-danonino-blue hover:opacity-90 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-danonino-violet/20 transition-all active:scale-95 text-xs"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-danonino-violet to-danonino-blue hover:opacity-90 text-white font-medium py-2 px-3 rounded-xl shadow-lg shadow-danonino-violet/20 transition-all active:scale-95 text-xs"
           >
             <MessageSquare className="w-4 h-4" />
             <span>Abrir Chat</span>
@@ -70,7 +79,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
 
           <button
             onClick={() => navigate('/habitat')}
-            className="flex items-center justify-center gap-2 bg-danonino-card hover:bg-danonino-cardHover text-slate-200 border border-danonino-border font-medium py-2.5 px-4 rounded-xl transition-all active:scale-95 text-xs"
+            className="flex items-center justify-center gap-2 bg-danonino-card hover:bg-danonino-cardHover text-slate-200 border border-danonino-border font-medium py-2 px-3 rounded-xl transition-all active:scale-95 text-xs"
           >
             <Compass className="w-4 h-4 text-danonino-cyan" />
             <span>Ver Habitat</span>
