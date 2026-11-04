@@ -308,11 +308,18 @@ export class LiveAudioSession {
 }
 
 // -------------------------------------------------------------
-// NativeAudioPlayer: Reproductor HTML5 Audio para la voz de Danonino
+// NativeAudioPlayer: Reproductor HTML5 Audio para la voz de Danonino con Analizador Web Audio API
 // -------------------------------------------------------------
 export class NativeAudioPlayer {
   private audioElement: HTMLAudioElement | null = null;
+  private audioCtx: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private animId: number | null = null;
   private isPlaying = false;
+  private currentLevel = 0;
+
+  constructor(private onLevelChange?: (level: number) => void) {}
 
   public playBase64(
     audioBase64: string,
@@ -328,36 +335,110 @@ export class NativeAudioPlayer {
         : `data:audio/mp3;base64,${audioBase64}`;
 
       const audio = new Audio(src);
+      audio.crossOrigin = 'anonymous';
       this.audioElement = audio;
+
+      // Intentar conectar analizador Web Audio API
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          if (!this.audioCtx || this.audioCtx.state === 'closed') {
+            this.audioCtx = new AudioContextClass();
+          }
+          if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume().catch(() => {});
+          }
+
+          this.analyser = this.audioCtx.createAnalyser();
+          this.analyser.fftSize = 128;
+          this.analyser.smoothingTimeConstant = 0.25;
+
+          this.sourceNode = this.audioCtx.createMediaElementSource(audio);
+          this.sourceNode.connect(this.analyser);
+          this.analyser.connect(this.audioCtx.destination);
+        }
+      } catch (errCtx) {
+        // Fallback si createMediaElementSource está restringido
+        this.analyser = null;
+      }
 
       audio.onplay = () => {
         this.isPlaying = true;
+        this.startLevelTracking();
         onStart?.();
       };
 
       audio.onended = () => {
-        this.isPlaying = false;
-        this.audioElement = null;
+        this.stop();
         onEnded?.();
         resolve();
       };
 
       audio.onerror = (e) => {
-        this.isPlaying = false;
-        this.audioElement = null;
+        this.stop();
         onError?.(e);
         resolve();
       };
 
       audio.play().catch((err) => {
-        this.isPlaying = false;
+        this.stop();
         onError?.(err);
         resolve();
       });
     });
   }
 
+  private startLevelTracking() {
+    if (this.animId) cancelAnimationFrame(this.animId);
+
+    const dataArray = new Uint8Array(this.analyser ? this.analyser.frequencyBinCount : 32);
+
+    const tick = () => {
+      if (!this.isPlaying || !this.audioElement) {
+        this.currentLevel = 0;
+        this.onLevelChange?.(0);
+        return;
+      }
+
+      if (this.analyser) {
+        this.analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        this.currentLevel = Math.min(100, Math.round((avg / 128) * 100));
+      } else {
+        // Simulación reactiva suave si el analizador nativo no está disponible
+        this.currentLevel = 30 + Math.round(Math.random() * 40);
+      }
+
+      this.onLevelChange?.(this.currentLevel);
+      this.animId = requestAnimationFrame(tick);
+    };
+
+    this.animId = requestAnimationFrame(tick);
+  }
+
+  public getWaveformData(): Uint8Array | null {
+    if (!this.isPlaying || !this.analyser) return null;
+    const buffer = new Uint8Array(this.analyser.fftSize);
+    this.analyser.getByteTimeDomainData(buffer);
+    return buffer;
+  }
+
+  public getCurrentLevel(): number {
+    return this.currentLevel;
+  }
+
   public stop() {
+    if (this.animId) {
+      cancelAnimationFrame(this.animId);
+      this.animId = null;
+    }
+    this.currentLevel = 0;
+    this.onLevelChange?.(0);
+
     if (this.audioElement) {
       try {
         this.audioElement.pause();

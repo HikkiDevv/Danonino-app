@@ -1,40 +1,127 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Play, Pause, RefreshCw, Sparkles, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
+import { Moon, RefreshCw, CheckCircle2, AlertTriangle, Layers, Clock, Brain, Filter, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
-import { AutonomyData } from '../types';
+import { ActivityEvent } from '../types';
 
 export const ActivityView: React.FC = () => {
-  const [data, setData] = useState<AutonomyData | null>(null);
-  const [isDreamingNow, setIsDreamingNow] = useState(false);
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>('todos');
+  const [isDreaming, setIsDreaming] = useState(false);
   const [dreamMessage, setDreamMessage] = useState<string | null>(null);
-  const [autonomyActive, setAutonomyActive] = useState(true);
 
-  const loadData = async () => {
+  const filters = [
+    { id: 'todos', label: 'Todos' },
+    { id: 'reflection', label: 'Reflexiones' },
+    { id: 'fact', label: 'Hechos' },
+    { id: 'inference', label: 'Inferencias' },
+    { id: 'action', label: 'Acciones' },
+    { id: 'error', label: 'Incidentes' }
+  ];
+
+  const loadActivity = async () => {
+    setLoading(true);
     try {
-      const res = await api.getAutonomous();
-      if (res.ok) setData(res);
+      const res = await api.getActivity(40);
+      if (res.ok && res.events) {
+        setEvents(res.events);
+      }
     } catch (err: any) {
       console.error('Error cargando actividad:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadActivity();
   }, []);
 
   const handleTriggerDream = async () => {
-    setIsDreamingNow(true);
-    setDreamMessage('Ejecutando consolidación recursiva de recuerdos (DreamCycle 2.0)...');
+    setIsDreaming(true);
+    setDreamMessage('Consolidando recuerdos recientes y generando síntesis cognitiva...');
     try {
       const res = await api.triggerDreamCycle();
       if (res.ok && res.dreamResult) {
-        setDreamMessage(`DreamCycle exitoso: ${res.dreamResult.dream_id || 'Completado'}. Recuerdos procesados: ${res.dreamResult.memories_processed ?? 0}`);
-        loadData();
+        setDreamMessage(
+          `Reflexión completada (${res.dreamResult.dream_id || 'OK'}). Recuerdos procesados: ${
+            res.dreamResult.memories_processed ?? 0
+          }`
+        );
+        loadActivity();
       }
     } catch (err: any) {
-      setDreamMessage('Error ejecutando ciclo: ' + err.message);
+      setDreamMessage('Interrupción en ciclo: ' + err.message);
     } finally {
-      setIsDreamingNow(false);
+      setIsDreaming(false);
+    }
+  };
+
+  const filteredEvents = events.filter((e) => {
+    if (selectedFilter === 'todos') return true;
+    return e.type === selectedFilter;
+  });
+
+  const getEventStyle = (type: ActivityEvent['type']) => {
+    switch (type) {
+      case 'reflection':
+        return {
+          badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+          dot: 'bg-indigo-400 shadow-indigo-500/50',
+          label: 'Reflexión',
+          icon: Moon
+        };
+      case 'fact':
+        return {
+          badge: 'bg-cyan-500/20 text-danonino-cyan border-cyan-500/30',
+          dot: 'bg-danonino-cyan shadow-cyan-500/50',
+          label: 'Hecho observado',
+          icon: Brain
+        };
+      case 'inference':
+        return {
+          badge: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+          dot: 'bg-purple-400 shadow-purple-500/50',
+          label: 'Inferencia',
+          icon: Layers
+        };
+      case 'action':
+        return {
+          badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+          dot: 'bg-emerald-400 shadow-emerald-500/50',
+          label: 'Acción temporal',
+          icon: Clock
+        };
+      case 'error':
+        return {
+          badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+          dot: 'bg-amber-400 shadow-amber-500/50',
+          label: 'Incidente',
+          icon: AlertTriangle
+        };
+      default:
+        return {
+          badge: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+          dot: 'bg-slate-400 shadow-slate-500/50',
+          label: 'Evento',
+          icon: CheckCircle2
+        };
+    }
+  };
+
+  const formatDate = (isoStr?: string) => {
+    if (!isoStr) return 'Registro reciente';
+    try {
+      const date = new Date(isoStr);
+      if (isNaN(date.getTime())) return isoStr;
+      return date.toLocaleDateString([], {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return isoStr;
     }
   };
 
@@ -42,132 +129,140 @@ export const ActivityView: React.FC = () => {
     <div className="pb-24 px-4 pt-4 max-w-md mx-auto space-y-4 animate-fade-in">
       {/* Encabezado */}
       <div className="flex items-center justify-between glass-panel p-3.5 rounded-2xl">
-        <div className="flex items-center gap-2">
-          <Moon className="w-5 h-5 text-danonino-lavender" />
+        <div className="flex items-center gap-2.5">
+          <Moon className="w-5 h-5 text-danonino-cyan" />
           <div>
-            <h2 className="text-sm font-bold text-slate-100">Actividad Autónoma</h2>
-            <p className="text-[10px] text-slate-400">DreamCycle y consolidación cognitiva</p>
+            <h2 className="text-sm font-bold text-slate-100">Actividad Cognitiva</h2>
+            <p className="text-[10px] text-slate-400">Línea temporal de eventos y reflexiones</p>
           </div>
         </div>
 
         <button
-          onClick={() => setAutonomyActive(!autonomyActive)}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-medium transition-colors ${
-            autonomyActive
-              ? 'bg-danonino-success/15 text-danonino-success border border-danonino-success/30'
-              : 'bg-slate-700/50 text-slate-400 border border-slate-600'
-          }`}
+          onClick={loadActivity}
+          disabled={loading}
+          className="p-2 rounded-xl bg-danonino-card border border-danonino-border hover:border-danonino-cyan text-slate-300 transition-colors"
+          title="Actualizar actividad"
         >
-          {autonomyActive ? (
-            <>
-              <Play className="w-3 h-3" />
-              <span>Activo</span>
-            </>
-          ) : (
-            <>
-              <Pause className="w-3 h-3" />
-              <span>Pausado</span>
-            </>
-          )}
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-danonino-cyan' : ''}`} />
         </button>
       </div>
 
-      {/* Disparador Manual de DreamCycle */}
-      <div className="glass-panel p-4 rounded-3xl border border-danonino-lavender/40 relative overflow-hidden space-y-3">
+      {/* Disparador de Reflexión Manual */}
+      <div className="glass-panel p-4 rounded-3xl border border-danonino-border/80 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-danonino-lavender" />
+            <ShieldCheck className="w-4 h-4 text-danonino-cyan" />
             <h3 className="text-xs font-bold text-slate-100 uppercase tracking-wide">
-              DreamCycle 2.0 en Demanda
+              Reflexión Autónoma (DreamCycle)
             </h3>
           </div>
-          <span className="text-[10px] font-mono text-danonino-lavender bg-danonino-lavender/10 px-2 py-0.5 rounded-full">
+          <span className="text-[9px] font-mono text-slate-400 bg-danonino-card px-2 py-0.5 rounded-md border border-danonino-border">
             Cada 2h automático
           </span>
         </div>
 
-        <p className="text-xs text-slate-300 leading-relaxed">
-          Consolida recuerdos episódicos recientes en SQLite, genera hipótesis inductivas y resuelve contradicciones semánticas.
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Sintetiza interacciones recientes, genera hipótesis inductivas y consolida la memoria a largo plazo.
         </p>
 
         <button
           onClick={handleTriggerDream}
-          disabled={isDreamingNow}
-          className="w-full py-2.5 bg-gradient-to-r from-danonino-violet to-danonino-blue hover:opacity-90 disabled:opacity-50 text-white font-medium rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-danonino-violet/20 active:scale-95 transition-all"
+          disabled={isDreaming}
+          className="w-full py-2.5 bg-danonino-card border border-danonino-cyan/40 hover:border-danonino-cyan text-danonino-cyan font-bold rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm disabled:opacity-50"
         >
-          {isDreamingNow ? (
+          {isDreaming ? (
             <>
-              <RefreshCw className="w-4 h-4 animate-spin text-danonino-cyan" />
-              <span>Consolidando memoria...</span>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-danonino-cyan" />
+              <span>Ejecutando reflexión...</span>
             </>
           ) : (
             <>
-              <Moon className="w-4 h-4" />
-              <span>Iniciar DreamCycle Ahora</span>
+              <Moon className="w-3.5 h-3.5" />
+              <span>Iniciar Reflexión Ahora</span>
             </>
           )}
         </button>
 
         {dreamMessage && (
-          <div className="p-2.5 rounded-xl bg-danonino-card/80 border border-danonino-border text-[11px] text-danonino-cyan leading-tight font-mono">
+          <div className="p-2.5 rounded-xl bg-danonino-bg border border-danonino-border text-[11px] text-danonino-cyan font-mono animate-fade-in">
             {dreamMessage}
           </div>
         )}
       </div>
 
-      {/* Historial de Ciclos de Sueño (Dream Journal) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase">
-            Registro de Sueños Recientes
-          </h3>
+      {/* Filtros de la Línea Temporal */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+        {filters.map((f) => (
           <button
-            onClick={loadData}
-            className="text-[10px] text-danonino-cyan font-mono hover:underline flex items-center gap-1"
+            key={f.id}
+            onClick={() => setSelectedFilter(f.id)}
+            className={`px-3 py-1 rounded-full text-[11px] whitespace-nowrap transition-all ${
+              selectedFilter === f.id
+                ? 'bg-danonino-cyan text-danonino-bg font-bold shadow-md shadow-danonino-cyan/20'
+                : 'bg-danonino-card text-slate-400 border border-danonino-border hover:text-slate-200'
+            }`}
           >
-            <RefreshCw className="w-2.5 h-2.5" />
-            <span>Actualizar</span>
+            {f.label}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {data?.suenosRecientes && data.suenosRecientes.length > 0 ? (
-          data.suenosRecientes.map((d, i) => (
-            <div
-              key={d.dream_id || i}
-              className="glass-panel p-3.5 rounded-2xl border border-danonino-border/70 space-y-1.5"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-danonino-success" />
-                  <span className="font-mono font-bold text-slate-200 truncate max-w-[170px]">
-                    {d.dream_id}
-                  </span>
-                </div>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {d.started_at ? String(d.started_at).slice(11, 16) : 'Completado'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] font-mono text-slate-400">
-                <div className="bg-danonino-card/60 p-1.5 rounded-lg text-center">
-                  <span className="block text-slate-200 font-bold">{d.memories_processed ?? 0}</span>
-                  <span className="text-[9px]">Recuerdos</span>
-                </div>
-                <div className="bg-danonino-card/60 p-1.5 rounded-lg text-center">
-                  <span className="block text-danonino-cyan font-bold">{d.associations_created ?? 0}</span>
-                  <span className="text-[9px]">Asociaciones</span>
-                </div>
-                <div className="bg-danonino-card/60 p-1.5 rounded-lg text-center">
-                  <span className="block text-danonino-lavender font-bold">{d.hypotheses_generated ?? 0}</span>
-                  <span className="text-[9px]">Hipótesis</span>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="text-center py-8 glass-panel rounded-2xl text-xs text-slate-400">
-            No hay registros de ciclos de sueño recientes.
+      {/* Línea Temporal Vertical */}
+      <div className="space-y-3 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-danonino-border/60">
+        {loading && events.length === 0 ? (
+          <div className="glass-panel p-8 text-center text-xs text-slate-400 space-y-2 rounded-2xl ml-7">
+            <RefreshCw className="w-5 h-5 animate-spin mx-auto text-danonino-cyan" />
+            <p>Consultando eventos cognitivos...</p>
           </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="glass-panel p-8 text-center text-xs text-slate-400 space-y-2 rounded-2xl ml-7">
+            <Clock className="w-6 h-6 mx-auto text-slate-600" />
+            <p className="font-semibold text-slate-300">Sin eventos en esta categoría</p>
+            <p className="text-[11px] text-slate-500">
+              Las nuevas observaciones y reflexiones se registrarán aquí en tiempo real.
+            </p>
+          </div>
+        ) : (
+          filteredEvents.map((e) => {
+            const style = getEventStyle(e.type);
+            const Icon = style.icon;
+
+            return (
+              <div key={e.id} className="relative pl-7 animate-fade-in">
+                {/* Punto luminoso conector */}
+                <div
+                  className={`absolute left-2.5 top-3.5 -translate-x-1/2 w-2.5 h-2.5 rounded-full ring-4 ring-danonino-bg ${style.dot} shadow-sm`}
+                />
+
+                <div className="glass-panel p-3.5 rounded-2xl border border-danonino-border/80 hover:border-danonino-border space-y-2">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded-md border font-mono font-medium flex items-center gap-1 ${style.badge}`}>
+                        <Icon className="w-2.5 h-2.5" />
+                        <span>{style.label}</span>
+                      </span>
+                      {e.confidence !== undefined && (
+                        <span className="text-slate-400 font-mono text-[9px]">
+                          Confianza: {Math.round(e.confidence * 100)}%
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="text-slate-400 font-mono">{formatDate(e.timestamp)}</span>
+                  </div>
+
+                  <h4 className="text-xs font-semibold text-slate-200">{e.title}</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed break-words">{e.description}</p>
+
+                  {e.status && (
+                    <div className="text-[9px] font-mono text-slate-500 pt-1 border-t border-danonino-border/40">
+                      Estado: <span className="text-slate-300">{e.status}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

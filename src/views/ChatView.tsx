@@ -1,5 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Sparkles, RefreshCw, Volume2, VolumeX, PhoneCall, Plus, MessageSquare, ChevronDown, Trash2 } from 'lucide-react';
+import {
+  Send,
+  Sparkles,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+  PhoneCall,
+  Plus,
+  MessageSquare,
+  ChevronDown,
+  Trash2,
+  Copy,
+  Check,
+  RotateCcw,
+  Square,
+  Paperclip,
+  Mic,
+  AlertCircle
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api, getCurrentUser } from '../services/api';
 import { ChatMessage, AgentStatus, Conversation } from '../types';
@@ -22,55 +40,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
-  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [showConvDropdown, setShowConvDropdown] = useState(false);
+  const [infoPill, setInfoPill] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     audioPlayerRef.current = new NativeAudioPlayer();
     return () => {
       audioPlayerRef.current?.stop();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
-  const toggleSpeak = async (id: string, text: string) => {
-    if (!audioPlayerRef.current) return;
-
-    if (speakingMsgId === id) {
-      audioPlayerRef.current.stop();
-      setSpeakingMsgId(null);
-      return;
-    }
-
-    audioPlayerRef.current.stop();
-    setSpeakingMsgId(id);
-    setIsLoadingAudio(true);
-
-    try {
-      const audioBase64 = await api.getTTSAudio(text);
-      if (audioBase64) {
-        setIsLoadingAudio(false);
-        await audioPlayerRef.current.playBase64(
-          audioBase64,
-          () => setSpeakingMsgId(id),
-          () => setSpeakingMsgId(null),
-          () => setSpeakingMsgId(null)
-        );
-      } else {
-        setSpeakingMsgId(null);
-        setIsLoadingAudio(false);
-      }
-    } catch (err) {
-      console.error('Error reproduciendo audio:', err);
-      setSpeakingMsgId(null);
-      setIsLoadingAudio(false);
-    }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   const loadConversationsAndHistory = async () => {
@@ -93,7 +83,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
       setActiveConvId(targetConvId);
       localStorage.setItem('danonino_active_conv', targetConvId);
 
-      // Cargar mensajes de la conversación activa
       const msgs = await api.getConversationMessages(targetConvId, 60);
       setMessages(msgs);
     } catch (err: any) {
@@ -155,12 +144,51 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     }
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const texto = inputText.trim();
+  const toggleSpeak = async (id: string, text: string) => {
+    if (!audioPlayerRef.current) return;
+
+    if (speakingMsgId === id) {
+      audioPlayerRef.current.stop();
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    audioPlayerRef.current.stop();
+    setSpeakingMsgId(id);
+
+    try {
+      const audioBase64 = await api.getTTSAudio(text);
+      if (audioBase64) {
+        await audioPlayerRef.current.playBase64(
+          audioBase64,
+          () => setSpeakingMsgId(id),
+          () => setSpeakingMsgId(null),
+          () => setSpeakingMsgId(null)
+        );
+      } else {
+        setSpeakingMsgId(null);
+      }
+    } catch (err) {
+      console.error('Error reproduciendo audio:', err);
+      setSpeakingMsgId(null);
+    }
+  };
+
+  const handleCopyText = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(id);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch (err) {
+      console.error('Error al copiar:', err);
+    }
+  };
+
+  const handleSend = async (textToSend?: string) => {
+    const texto = (textToSend || inputText).trim();
     if (!texto || isSending) return;
 
-    setInputText('');
+    if (!textToSend) setInputText('');
     const userMsg: ChatMessage = {
       id: 'local_' + Date.now(),
       sender: currentUser?.displayName || 'Usuario',
@@ -174,6 +202,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     setIsSending(true);
     setErrorMsg(null);
 
+    abortControllerRef.current = new AbortController();
+
     try {
       const res = await api.sendChatMessage(texto, activeConvId || undefined);
       if (res.ok && res.reply) {
@@ -184,30 +214,60 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           fromMe: false
         };
-        const updated = [...newMessages, botMsg];
-        setMessages(updated);
+        setMessages([...newMessages, botMsg]);
       }
     } catch (err: any) {
-      setErrorMsg('No se pudo conectar con Danonino Core.');
-      const errReply: ChatMessage = {
-        id: 'err_' + Date.now(),
-        sender: 'Danonino',
-        text: 'Hubo una interrupción en el procesamiento de tu mensaje. Por favor intenta de nuevo.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        fromMe: false
-      };
-      setMessages((prev) => [...prev, errReply]);
+      if (err.name === 'AbortError') {
+        const abortedReply: ChatMessage = {
+          id: 'abort_' + Date.now(),
+          sender: 'Danonino',
+          text: 'Generación cancelada.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          fromMe: false
+        };
+        setMessages((prev) => [...prev, abortedReply]);
+      } else {
+        setErrorMsg('Error conectando con Danonino Core.');
+        const errReply: ChatMessage = {
+          id: 'err_' + Date.now(),
+          sender: 'Danonino',
+          text: 'Hubo una interrupción en el procesamiento de tu mensaje. Puedes reintentar.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          fromMe: false
+        };
+        setMessages((prev) => [...prev, errReply]);
+      }
     } finally {
       setIsSending(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsSending(false);
+  };
+
+  const handleRetryLastMessage = () => {
+    const lastUserMsg = [...messages].reverse().find((m) => m.fromMe);
+    if (lastUserMsg) {
+      handleSend(lastUserMsg.text);
+    }
+  };
+
+  const showFeatureNotice = (feature: string) => {
+    setInfoPill(`${feature}: Disponible en la versión Danonino Mindspace.`);
+    setTimeout(() => setInfoPill(null), 3500);
   };
 
   const currentConv = conversations.find((c) => c.id === activeConvId);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-60px)] pb-16 max-w-md mx-auto">
+    <div className="flex flex-col h-[100dvh] max-h-[100dvh] pb-16 max-w-md mx-auto relative select-none">
       {/* Barra de Gestión de Conversación */}
-      <div className="px-3 py-2 bg-danonino-card/70 border-b border-danonino-border/70 flex items-center justify-between text-xs text-slate-300 relative z-20">
+      <div className="px-3 py-2 bg-danonino-card/80 backdrop-blur-md border-b border-danonino-border/70 flex items-center justify-between text-xs text-slate-300 relative z-20">
         {/* Selector de Conversación */}
         <div className="relative">
           <button
@@ -282,55 +342,100 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
         </div>
       </div>
 
+      {/* Notificación Flotante */}
+      {infoPill && (
+        <div className="absolute top-12 left-4 right-4 z-30 p-2 rounded-xl bg-danonino-card/95 border border-danonino-cyan/40 text-danonino-cyan text-[11px] font-mono shadow-xl animate-fade-in flex items-center justify-between">
+          <span>{infoPill}</span>
+          <button onClick={() => setInfoPill(null)} className="text-slate-400 hover:text-slate-200 ml-2">
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Lista de Mensajes */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+        {/* Separador de Fecha Inicial */}
+        <div className="flex justify-center">
+          <span className="px-3 py-0.5 rounded-full bg-danonino-card/70 border border-danonino-border/60 text-[10px] text-slate-400 font-mono">
+            Hoy
+          </span>
+        </div>
+
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
             <DanoninoAvatar size="lg" mode="idle" />
             <h3 className="text-sm font-semibold text-slate-200 mt-3">Conversación Privada</h3>
             <p className="text-xs text-slate-400 max-w-xs mt-1">
-              Este espacio es estrictamente tuyo. Los recuerdos y mensajes están aislados por tu cuenta.
+              Tus recuerdos y mensajes están estrictamente aislados y encriptados en tu cuenta.
             </p>
           </div>
         ) : (
           messages.map((msg, i) => {
             const isMe = msg.fromMe;
+            const msgKey = String(msg.id || i);
+            const isSpeaking = speakingMsgId === msgKey;
+            const isCopied = copiedMsgId === msgKey;
+
             return (
               <div
-                key={msg.id || i}
-                className={`flex gap-2.5 ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                key={msgKey}
+                className={`flex gap-2.5 ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in group`}
               >
                 {!isMe && (
-                  <DanoninoAvatar size="sm" mode="idle" showStatusBadge={false} className="mt-1 flex-shrink-0" />
+                  <DanoninoAvatar
+                    size="sm"
+                    mode={isSpeaking ? 'speaking' : isSending && i === messages.length - 1 ? 'thinking' : 'idle'}
+                    showStatusBadge={false}
+                    className="mt-1 flex-shrink-0"
+                  />
                 )}
 
                 <div
-                  className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm ${
+                  className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm transition-all ${
                     isMe
                       ? 'bg-danonino-blue text-white rounded-tr-xs'
                       : 'bg-danonino-card border border-danonino-border/80 text-slate-100 rounded-tl-xs'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+
+                  {/* Barra de Acciones y Timestamp */}
                   <div
-                    className={`mt-1 flex items-center justify-end gap-2 text-[9px] ${
-                      isMe ? 'text-blue-200/70' : 'text-slate-400'
+                    className={`mt-1.5 flex items-center justify-between gap-3 text-[9px] pt-1 border-t ${
+                      isMe ? 'border-white/10 text-blue-200/70' : 'border-danonino-border/40 text-slate-400'
                     }`}
                   >
+                    {/* Timestamp */}
                     <span>{msg.timestamp}</span>
-                    {!isMe && (
+
+                    {/* Acciones Rápidas (Copiar, TTS) */}
+                    <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => toggleSpeak(String(msg.id), msg.text)}
+                        onClick={() => handleCopyText(msgKey, msg.text)}
                         className="hover:text-danonino-cyan transition-colors p-0.5 rounded"
-                        title="Escuchar respuesta"
+                        title="Copiar texto"
                       >
-                        {speakingMsgId === String(msg.id) ? (
-                          <VolumeX className="w-3 h-3 text-danonino-cyan animate-pulse" />
+                        {isCopied ? (
+                          <Check className="w-3 h-3 text-danonino-cyan" />
                         ) : (
-                          <Volume2 className="w-3 h-3 text-slate-400 hover:text-danonino-cyan" />
+                          <Copy className="w-3 h-3 text-slate-400 hover:text-slate-200" />
                         )}
                       </button>
-                    )}
+
+                      {!isMe && (
+                        <button
+                          onClick={() => toggleSpeak(msgKey, msg.text)}
+                          className="hover:text-danonino-cyan transition-colors p-0.5 rounded"
+                          title="Escuchar respuesta"
+                        >
+                          {isSpeaking ? (
+                            <VolumeX className="w-3 h-3 text-danonino-cyan animate-pulse" />
+                          ) : (
+                            <Volume2 className="w-3 h-3 text-slate-400 hover:text-danonino-cyan" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -338,33 +443,81 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
           })
         )}
 
+        {/* Estado Real: Danonino está pensando / Procesando */}
         {isSending && (
-          <div className="flex gap-2.5 justify-start animate-fade-in">
-            <DanoninoAvatar size="sm" mode="thinking" showStatusBadge={false} className="mt-1 flex-shrink-0" />
-            <div className="glass-panel px-4 py-2.5 rounded-2xl rounded-tl-xs text-xs text-danonino-cyan flex items-center gap-2">
+          <div className="flex gap-2.5 justify-start animate-fade-in items-center">
+            <DanoninoAvatar size="sm" mode="thinking" showStatusBadge={false} className="flex-shrink-0" />
+            <div className="glass-panel px-3.5 py-2 rounded-2xl rounded-tl-xs text-xs text-danonino-cyan flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-danonino-cyan animate-ping" />
               <span>Danonino está pensando...</span>
+              <button
+                onClick={handleStopGeneration}
+                className="ml-2 px-1.5 py-0.5 rounded bg-danonino-bg border border-danonino-border text-slate-400 hover:text-rose-400 flex items-center gap-1 text-[10px]"
+                title="Detener respuesta"
+              >
+                <Square className="w-2.5 h-2.5" />
+                <span>Detener</span>
+              </button>
             </div>
+          </div>
+        )}
+
+        {/* Reintentar si hubo error */}
+        {errorMsg && (
+          <div className="flex justify-center animate-fade-in">
+            <button
+              onClick={handleRetryLastMessage}
+              className="px-3 py-1 rounded-full bg-danonino-card border border-rose-500/40 text-rose-300 hover:bg-danonino-card/80 text-[11px] flex items-center gap-1.5 font-mono"
+            >
+              <RotateCcw className="w-3 h-3 text-rose-400" />
+              <span>Reintentar último mensaje</span>
+            </button>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Caja de Entrada de Texto */}
+      {/* Caja de Entrada de Texto con Acciones */}
       <div className="p-3 bg-danonino-bg/95 border-t border-danonino-border/70">
-        <form onSubmit={handleSend} className="flex items-center gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-1.5">
+          {/* Adjuntar Archivo */}
+          <button
+            type="button"
+            onClick={() => showFeatureNotice('Adjuntar archivo')}
+            className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
+            title="Adjuntar archivo"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+
+          {/* Input de Texto */}
           <input
+            ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            onFocus={() => setTimeout(() => scrollToBottom('smooth'), 250)}
             placeholder="Mensaje privado para Danonino..."
-            className="flex-1 bg-danonino-card text-xs text-slate-100 placeholder-slate-500 px-4 py-2.5 rounded-2xl border border-danonino-border focus:outline-none focus:border-danonino-cyan transition-colors"
+            className="flex-1 bg-danonino-card text-xs text-slate-100 placeholder-slate-500 px-3.5 py-2.5 rounded-2xl border border-danonino-border focus:outline-none focus:border-danonino-cyan transition-colors"
           />
+
+          {/* Enviar Audio */}
+          <button
+            type="button"
+            onClick={() => showFeatureNotice('Nota de voz')}
+            className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
+            title="Grabar nota de voz"
+          >
+            <Mic className="w-4 h-4" />
+          </button>
+
+          {/* Botón Enviar */}
           <button
             type="submit"
             disabled={!inputText.trim() || isSending}
             className="p-2.5 bg-danonino-cyan text-danonino-bg rounded-2xl font-bold hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all flex-shrink-0 shadow-sm"
+            title="Enviar mensaje"
           >
             <Send className="w-4 h-4" />
           </button>

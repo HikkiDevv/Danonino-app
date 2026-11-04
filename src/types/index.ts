@@ -149,3 +149,15 @@ export interface WhatsAppLinkData {
   expiresInMinutes: number;
   instrucciones: string;
 }
+
+export interface ActivityEvent {
+  id: string;
+  type: 'reflection' | 'fact' | 'inference' | 'action' | 'error';
+  title: string;
+  description: string;
+  timestamp: string;
+  status?: string;
+  confidence?: number;
+  source?: string;
+  category?: string;
+}

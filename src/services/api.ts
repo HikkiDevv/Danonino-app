@@ -8,7 +8,8 @@ import {
   UserProfile,
   Conversation,
   AuthResponse,
-  WhatsAppLinkData
+  WhatsAppLinkData,
+  ActivityEvent
 } from '../types';
 
 // URL pública mundial permanente vía Cloudflare Tunnel para que cualquier persona con el APK pueda conectarse
@@ -258,6 +259,33 @@ export const api = {
       headers: buildHeaders()
     });
     if (!res.ok) throw new Error(`Error consultando recuerdos: ${res.statusText}`);
+    return res.json();
+  },
+
+  async deleteMemory(id: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`${getBaseApiUrl()}/memories/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error eliminando recuerdo: ${res.statusText}`);
+    return res.json();
+  },
+
+  async updateMemory(id: string, text: string): Promise<{ ok: boolean }> {
+    const res = await fetch(`${getBaseApiUrl()}/memories/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: buildHeaders(),
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) throw new Error(`Error actualizando recuerdo: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getActivity(limit = 30): Promise<{ ok: boolean; count: number; events: ActivityEvent[] }> {
+    const res = await fetch(`${getBaseApiUrl()}/activity?limit=${limit}`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error obteniendo actividad: ${res.statusText}`);
     return res.json();
   },
 

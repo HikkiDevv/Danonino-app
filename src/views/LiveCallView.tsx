@@ -1,5 +1,5 @@
 // danonino-app/src/views/LiveCallView.tsx
-// Danonino Live: Voz, Visión y Captura de Pantalla sin interferencias acústicas
+// DANONINO LIVE 2.0: Llamada Multimodal Inmersiva con Avatar Expresivo, Ondas Reales y Chat en Vivo
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,65 +11,58 @@ import {
   Monitor,
   PhoneOff,
   SwitchCamera,
-  Square,
+  MessageSquare,
   Sparkles,
-  Layers,
-  Clock,
-  Eye,
+  ChevronDown,
   Send,
   Radio,
-  X
+  X,
+  Volume2,
+  StopCircle,
+  AlertCircle
 } from 'lucide-react';
-import { DanoninoAvatar } from '../components/DanoninoAvatar';
+import { DanoninoAvatar, AvatarState } from '../components/DanoninoAvatar';
 import { LiveAudioSession, NativeAudioPlayer } from '../services/liveAudio';
 import { CameraManager, ScreenShareManager } from '../services/liveVision';
-import { api } from '../services/api';
-import { CallState, StreamMode, CallTelemetry } from '../types/live';
+import { api, getCurrentUser } from '../services/api';
+import { ChatMessage } from '../types';
 
 export const LiveCallView: React.FC = () => {
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
 
   // Estados de llamada
-  const [callState, setCallState] = useState<CallState>('connecting');
-  const [streamMode, setStreamMode] = useState<StreamMode>('voice_only');
+  const [callStatus, setCallStatus] = useState<'connecting' | 'listening' | 'thinking' | 'speaking' | 'muted'>('connecting');
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
-  const [screenShotBase64, setScreenShotBase64] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
-  // Modo de habla manual (Push-to-talk)
-  const [isManualRecording, setIsManualRecording] = useState(false);
-  const [textInput, setTextInput] = useState('');
-  const [showTextInput, setShowTextInput] = useState(false);
+  // Niveles de audio reactivos (0.0 a 1.0)
+  const [micAudioLevel, setMicAudioLevel] = useState(0);
+  const [ttsAudioLevel, setTtsAudioLevel] = useState(0);
 
   // Subtítulos y transcripción en vivo
-  const [liveTranscript, setLiveTranscript] = useState('');
-  const [agentReply, setAgentReply] = useState('');
-  const [telemetry, setTelemetry] = useState<CallTelemetry>({
-    fps: 0,
-    latencyMs: 0,
-    tokensEst: 0,
-    micLevel: 0,
-    audioOutputLevel: 0
-  });
+  const [userSubtitle, setUserSubtitle] = useState<string>('');
+  const [botSubtitle, setBotSubtitle] = useState<string>('');
+
+  // Panel deslizable de chat durante la llamada
+  const [showInCallChat, setShowInCallChat] = useState(false);
+  const [inCallMessages, setInCallMessages] = useState<ChatMessage[]>([]);
+  const [inCallInput, setInCallInput] = useState('');
+  const [isSendingInCallChat, setIsSendingInCallChat] = useState(false);
 
   // Referencias a servicios
   const audioSessionRef = useRef<LiveAudioSession | null>(null);
   const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
   const cameraManagerRef = useRef<CameraManager | null>(null);
   const screenManagerRef = useRef<ScreenShareManager | null>(null);
-  const screenFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const canvasWaveformRef = useRef<HTMLCanvasElement | null>(null);
   const sessionIdRef = useRef<string>('live_' + Date.now());
   const isInteractingRef = useRef<boolean>(false);
-  const callStateRef = useRef<CallState>('connecting');
-
-  useEffect(() => {
-    callStateRef.current = callState;
-  }, [callState]);
+  const inCallChatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Inicializar sesión y hardware
   useEffect(() => {
@@ -80,7 +73,14 @@ export const LiveCallView: React.FC = () => {
     };
   }, []);
 
-  // Dibujado continuo del visualizador de audio
+  // Sincronizar autoscroll en el chat en llamada
+  useEffect(() => {
+    if (showInCallChat) {
+      inCallChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [inCallMessages, showInCallChat]);
+
+  // Dibujado continuo del visualizador de audio en tiempo real
   useEffect(() => {
     let animId: number;
     const canvas = canvasWaveformRef.current;
@@ -89,23 +89,36 @@ export const LiveCallView: React.FC = () => {
     if (!ctx) return;
 
     const renderWave = () => {
-      const buffer = audioSessionRef.current?.getWaveformData();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (!buffer) {
+      // Si Danonino está hablando, mostramos las ondas del TTS
+      // Si el usuario está hablando o escuchando, mostramos las ondas del micrófono
+      const isSpeaking = callStatus === 'speaking';
+      const buffer = isSpeaking
+        ? audioPlayerRef.current?.getWaveformData()
+        : (!isMicMuted ? audioSessionRef.current?.getWaveformData() : null);
+
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = isSpeaking
+        ? '#06b6d4' // Cian bioluminiscente al responder
+        : callStatus === 'thinking'
+        ? '#8b5cf6' // Violeta al procesar
+        : callStatus === 'muted'
+        ? '#64748b' // Gris si está silenciado
+        : '#3b82f6'; // Azul mientras escucha
+
+      ctx.beginPath();
+
+      if (!buffer || buffer.length === 0 || callStatus === 'muted' || callStatus === 'connecting') {
+        // Línea sutil de reposo plana
+        const centerY = canvas.height / 2;
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(canvas.width, centerY);
+        ctx.stroke();
         animId = requestAnimationFrame(renderWave);
         return;
       }
 
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle =
-        callStateRef.current === 'speaking'
-          ? '#a855f7'
-          : callStateRef.current === 'listening'
-          ? '#06b6d4'
-          : '#3b82f6';
-
-      ctx.beginPath();
       const sliceWidth = (canvas.width * 1.0) / buffer.length;
       let x = 0;
 
@@ -120,600 +133,594 @@ export const LiveCallView: React.FC = () => {
         x += sliceWidth;
       }
 
-      ctx.lineTo(canvas.width, canvas.height / 2);
       ctx.stroke();
-
       animId = requestAnimationFrame(renderWave);
     };
 
     animId = requestAnimationFrame(renderWave);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [callStatus, isMicMuted]);
 
+  // Iniciar sesión Live
   const startLiveSession = async () => {
+    sessionIdRef.current = 'live_' + (currentUser?.id || 'usr') + '_' + Date.now();
+    setCallStatus('connecting');
+
     try {
-      setCallState('connecting');
+      // 1. Inicializar reproductor de audio con análisis de amplitud
+      audioPlayerRef.current = new NativeAudioPlayer((level) => {
+        setTtsAudioLevel(level / 100);
+      });
 
-      audioPlayerRef.current = new NativeAudioPlayer();
-      cameraManagerRef.current = new CameraManager({ maxFps: 0.5, quality: 0.65 });
-      screenManagerRef.current = new ScreenShareManager({ quality: 0.65 });
-
-      audioSessionRef.current = new LiveAudioSession({
+      // 2. Inicializar sesión de micrófono con captura PCM
+      const session = new LiveAudioSession({
         onAudioLevel: (level) => {
-          setTelemetry((prev) => ({ ...prev, micLevel: level }));
+          setMicAudioLevel(level / 100);
         },
         onSpeechStart: () => {
-          if (callStateRef.current !== 'speaking' && callStateRef.current !== 'processing') {
-            setCallState('listening');
+          if (callStatus !== 'speaking') {
+            setCallStatus('listening');
           }
         },
-        onSpeechEnd: (audioBase64) => {
-          if (!isInteractingRef.current && audioBase64) {
-            handleUserTurn('', audioBase64);
-          }
+        onSpeechEnd: async (audioBase64) => {
+          handleIncomingVoiceSegment(audioBase64);
         }
       });
 
-      await audioSessionRef.current.start();
-      setCallState('listening');
+      audioSessionRef.current = session;
+      await session.start();
 
-      // Saludo inicial de Danonino con voz neuronal real
-      const saludoTexto = 'Te escucho. Puedes hablarme o pulsar el micrófono cuando desees.';
-      setAgentReply(saludoTexto);
+      // 3. Inicializar managers de visión
+      cameraManagerRef.current = new CameraManager();
+      screenManagerRef.current = new ScreenShareManager();
 
-      try {
-        const audioB64 = await api.getTTSAudio(saludoTexto);
-        if (audioB64) {
-          playAgentAudio(audioB64);
-        }
-      } catch (_) {}
+      setCallStatus('listening');
+
+      // 4. Saludo inicial breve
+      setBotSubtitle('Conectado. Te escucho con atención.');
     } catch (err: any) {
-      console.error('Error iniciando sesión en vivo:', err);
-      setCallState('idle');
+      console.error('Error iniciando Danonino Live:', err);
+      setCallStatus('muted');
+      setBotSubtitle('No se pudo acceder al micrófono. Verifica los permisos.');
     }
   };
 
-  const playAgentAudio = async (audioBase64: string) => {
-    if (!audioPlayerRef.current) return;
-    setCallState('speaking');
-    audioSessionRef.current?.setAgentSpeaking(true);
-
-    try {
-      await audioPlayerRef.current.playBase64(
-        audioBase64,
-        () => setCallState('speaking'),
-        () => {
-          setCallState('listening');
-          audioSessionRef.current?.setAgentSpeaking(false);
-        },
-        () => {
-          setCallState('listening');
-          audioSessionRef.current?.setAgentSpeaking(false);
-        }
-      );
-    } catch (_) {
-      setCallState('listening');
-      audioSessionRef.current?.setAgentSpeaking(false);
-    }
-  };
-
-  // Barge-in manual: interrupción inmediata
-  const handleBargeIn = async () => {
-    if (callStateRef.current === 'speaking' || isInteractingRef.current) {
-      audioPlayerRef.current?.stop();
-      audioSessionRef.current?.setAgentSpeaking(false);
-      setCallState('interrupted');
-
-      try {
-        await api.cancelLiveTask(sessionIdRef.current);
-      } catch (_) {}
-
-      setTimeout(() => {
-        setCallState('listening');
-        isInteractingRef.current = false;
-      }, 200);
-    }
-  };
-
-  // Procesar turno de habla (audio real grabado y/o mensaje de texto + fotograma)
-  const handleUserTurn = async (messageText?: string, audioBase64?: string) => {
-    if (isInteractingRef.current) return;
+  // Procesar segmento de voz recibido del micrófono
+  const handleIncomingVoiceSegment = async (audioBase64: string) => {
+    if (isInteractingRef.current || isMicMuted) return;
     isInteractingRef.current = true;
-    setLiveTranscript(messageText || (audioBase64 ? 'Procesando tu voz...' : ''));
-    setCallState('processing');
-
-    let imageBase64: string | undefined = undefined;
-    let mode: StreamMode = 'voice_only';
-
-    if (cameraActive && cameraManagerRef.current) {
-      const frame = cameraManagerRef.current.captureCompressedFrame(true);
-      if (frame) {
-        imageBase64 = frame;
-        mode = 'camera';
-      }
-    } else if (screenShotBase64) {
-      imageBase64 = screenShotBase64;
-      mode = 'screen';
-    } else if (screenActive && screenManagerRef.current) {
-      const frame = await screenManagerRef.current.captureFrameAsync();
-      if (frame) {
-        imageBase64 = frame;
-        mode = 'screen';
-      }
-    }
-
-    // Evitar llamadas vacías si no hay audio real ni texto ni imagen
-    if (!messageText && !audioBase64 && !imageBase64) {
-      isInteractingRef.current = false;
-      setCallState('listening');
-      return;
-    }
-
-    setStreamMode(mode);
+    setCallStatus('thinking');
 
     try {
-      const startTime = Date.now();
+      let imageBase64: string | undefined = undefined;
+      let streamType = 'voice_only';
+
+      if (cameraActive && cameraManagerRef.current) {
+        imageBase64 = cameraManagerRef.current.captureCompressedFrame(true) || undefined;
+        streamType = 'camera';
+      } else if (screenActive && screenManagerRef.current) {
+        imageBase64 = (await screenManagerRef.current.captureFrameAsync()) || undefined;
+        streamType = 'screen';
+      }
+
       const res = await api.sendLiveInteraction(
-        messageText || '',
+        '',
         imageBase64,
-        mode,
+        streamType,
         sessionIdRef.current,
         audioBase64
       );
 
-      const latency = Date.now() - startTime;
-      setTelemetry((prev) => ({
-        ...prev,
-        latencyMs: res.latencyMs || latency,
-        tokensEst: res.tokensEst || Math.round((res.reply || '').length / 4),
-        fps: cameraManagerRef.current?.getCurrentFps() || 0
-      }));
+      if (res.ok && !res.interrupted) {
+        if (res.userTranscript) {
+          setUserSubtitle(res.userTranscript);
+          // Sincronizar en el chat en llamada
+          setInCallMessages((prev) => [
+            ...prev,
+            {
+              id: 'live_user_' + Date.now(),
+              sender: currentUser?.displayName || 'Tú',
+              text: res.userTranscript || '',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              fromMe: true
+            }
+          ]);
+        }
 
-      // Si el backend identificó la transcripción de lo que dijo el usuario, mostrarla en pantalla
-      if (res.userTranscript) {
-        setLiveTranscript(res.userTranscript);
-      }
+        if (res.reply) {
+          setBotSubtitle(res.reply);
+          setInCallMessages((prev) => [
+            ...prev,
+            {
+              id: 'live_bot_' + Date.now(),
+              sender: 'Danonino',
+              text: res.reply,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              fromMe: false
+            }
+          ]);
+        }
 
-      if (res.ok && res.reply && !res.interrupted) {
-        setAgentReply(res.reply);
-        if (res.audioBase64) {
-          await playAgentAudio(res.audioBase64);
+        // Reproducir audio neuronal con sincronización del avatar
+        if (res.audioBase64 && audioPlayerRef.current) {
+          setCallStatus('speaking');
+          audioSessionRef.current?.setAgentSpeaking(true);
+
+          await audioPlayerRef.current.playBase64(
+            res.audioBase64,
+            () => setCallStatus('speaking'),
+            () => {
+              setCallStatus('listening');
+              audioSessionRef.current?.setAgentSpeaking(false);
+            },
+            () => {
+              setCallStatus('listening');
+              audioSessionRef.current?.setAgentSpeaking(false);
+            }
+          );
         } else {
-          setCallState('listening');
+          setCallStatus('listening');
         }
       } else {
-        setCallState('listening');
+        setCallStatus('listening');
       }
     } catch (err: any) {
-      console.error('Error interactuando con Danonino Live:', err);
-      setAgentReply('Interrupción en la conexión. Puedes repetir.');
-      setCallState('listening');
+      console.error('Error en interacción en vivo:', err);
+      setCallStatus('listening');
     } finally {
       isInteractingRef.current = false;
     }
   };
 
-  // Botón Push-to-Talk (Pulsar para hablar)
-  const handleToggleManualRecord = async () => {
-    if (isManualRecording) {
-      setIsManualRecording(false);
-      const audioB64 = await audioSessionRef.current?.stopSegmentRecording();
-      if (audioB64) {
-        handleUserTurn('', audioB64);
-      }
-    } else {
-      handleBargeIn();
-      setIsManualRecording(true);
-      audioSessionRef.current?.startSegmentRecording();
-    }
-  };
-
-  // Enviar mensaje de texto auxiliar en llamada
-  const handleSendText = (e: React.FormEvent) => {
-    e.preventDefault();
-    const txt = textInput.trim();
-    if (!txt) return;
-    setTextInput('');
-    setShowTextInput(false);
-    handleUserTurn(txt);
-  };
-
-  // Toggle Cámara
-  const toggleCamera = async () => {
-    if (cameraActive) {
-      cameraManagerRef.current?.stop();
-      setCameraActive(false);
-      if (!screenActive && !screenShotBase64) setStreamMode('voice_only');
-    } else {
+  // Interrupción Natural (Barge-in)
+  const handleInterrupt = async () => {
+    if (callStatus === 'speaking' || isInteractingRef.current) {
+      audioPlayerRef.current?.stop();
+      audioSessionRef.current?.setAgentSpeaking(false);
+      setCallStatus('listening');
+      isInteractingRef.current = false;
       try {
-        if (screenActive) {
-          screenManagerRef.current?.stop();
-          setScreenActive(false);
-        }
-        setScreenShotBase64(null);
-        await cameraManagerRef.current?.start(videoPreviewRef.current || undefined, facingMode);
-        setCameraActive(true);
-        setStreamMode('camera');
-      } catch (err) {
-        alert('No se pudo acceder a la cámara. Revisa los permisos.');
-      }
+        await api.cancelLiveTask(sessionIdRef.current);
+      } catch (_) {}
     }
   };
 
-  // Alternar frontal / trasera
-  const switchFacing = async () => {
-    if (!cameraActive || !cameraManagerRef.current) return;
-    const nextFacing = await cameraManagerRef.current.switchFacingMode();
-    setFacingMode(nextFacing);
+  // Toggle de Micrófono
+  const toggleMute = () => {
+    if (!audioSessionRef.current) return;
+    const next = !isMicMuted;
+    setIsMicMuted(next);
+    audioSessionRef.current.setMuted(next);
+    setCallStatus(next ? 'muted' : 'listening');
   };
 
-  // Compartir Pantalla nativa de Android (MediaProjection)
-  const toggleScreenShare = async () => {
-    if (screenActive || screenShotBase64) {
-      screenManagerRef.current?.stop();
-      setScreenActive(false);
-      setScreenShotBase64(null);
-      setStreamMode('voice_only');
-      return;
+  // Toggle de Cámara
+  const toggleCamera = async () => {
+    if (screenActive) {
+      await toggleScreenShare();
     }
 
     if (cameraActive) {
       cameraManagerRef.current?.stop();
       setCameraActive(false);
+    } else {
+      if (!cameraManagerRef.current) return;
+      try {
+        const stream = await cameraManagerRef.current.start(videoPreviewRef.current || undefined, facingMode);
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = stream;
+        }
+        setCameraActive(true);
+      } catch (err) {
+        console.error('Error activando cámara:', err);
+      }
     }
+  };
+
+  // Cambiar entre cámara frontal y trasera
+  const flipCamera = async () => {
+    if (!cameraActive || !cameraManagerRef.current) return;
+    try {
+      const nextFacing = await cameraManagerRef.current.switchFacingMode();
+      setFacingMode(nextFacing);
+    } catch (err) {
+      console.error('Error cambiando cámara:', err);
+    }
+  };
+
+  // Toggle de Pantalla Compartida
+  const toggleScreenShare = async () => {
+    if (cameraActive) {
+      cameraManagerRef.current?.stop();
+      setCameraActive(false);
+    }
+
+    if (screenActive) {
+      await screenManagerRef.current?.stop();
+      setScreenActive(false);
+    } else {
+      if (!screenManagerRef.current) return;
+      try {
+        const started = await screenManagerRef.current.start();
+        if (started) {
+          setScreenActive(true);
+        }
+      } catch (err) {
+        console.error('Error compartiendo pantalla:', err);
+      }
+    }
+  };
+
+  // Enviar mensaje en el chat durante la llamada
+  const handleSendInCallChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const texto = inCallInput.trim();
+    if (!texto || isSendingInCallChat) return;
+
+    setInCallInput('');
+    setIsSendingInCallChat(true);
+
+    const userMsg: ChatMessage = {
+      id: 'incall_' + Date.now(),
+      sender: currentUser?.displayName || 'Tú',
+      text: texto,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      fromMe: true
+    };
+    setInCallMessages((prev) => [...prev, userMsg]);
+    setUserSubtitle(texto);
+    setCallStatus('thinking');
 
     try {
-      // Inicia el diálogo del sistema Android ("¿Iniciar proyección con Danonino?")
-      await screenManagerRef.current?.start(() => {
-        setScreenActive(false);
-        setStreamMode('voice_only');
-      });
-      setScreenActive(true);
-      setStreamMode('screen');
-    } catch (err: any) {
-      // Si el usuario canceló el diálogo del sistema, no hacer nada
-      if (err.message && err.message.includes('canceló')) {
-        return;
+      const res = await api.sendLiveInteraction(
+        texto,
+        undefined,
+        'voice_only',
+        sessionIdRef.current
+      );
+
+      if (res.ok && res.reply) {
+        setBotSubtitle(res.reply);
+        setInCallMessages((prev) => [
+          ...prev,
+          {
+            id: 'incall_bot_' + Date.now(),
+            sender: 'Danonino',
+            text: res.reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            fromMe: false
+          }
+        ]);
+
+        if (res.audioBase64 && audioPlayerRef.current) {
+          setCallStatus('speaking');
+          audioSessionRef.current?.setAgentSpeaking(true);
+          await audioPlayerRef.current.playBase64(
+            res.audioBase64,
+            () => setCallStatus('speaking'),
+            () => {
+              setCallStatus('listening');
+              audioSessionRef.current?.setAgentSpeaking(false);
+            },
+            () => {
+              setCallStatus('listening');
+              audioSessionRef.current?.setAgentSpeaking(false);
+            }
+          );
+        } else {
+          setCallStatus('listening');
+        }
+      } else {
+        setCallStatus('listening');
       }
-      // Si no soporta proyección nativa en este entorno, ofrecer selector de capturas
-      screenFileInputRef.current?.click();
-    }
-  };
-
-  const handleScreenFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const b64 = event.target?.result as string;
-      if (b64) {
-        setScreenShotBase64(b64);
-        setScreenActive(true);
-        setStreamMode('screen');
-        // Analizar la captura inmediatamente con Danonino
-        handleUserTurn('He compartido esta captura de mi pantalla. ¿Qué observas y cómo me ayudas?', undefined);
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
-  // Silenciar Micrófono con hardware mute real
-  const toggleMic = () => {
-    const nextMuted = !isMicMuted;
-    setIsMicMuted(nextMuted);
-    audioSessionRef.current?.setMuted(nextMuted);
-    if (nextMuted) {
-      setTelemetry((prev) => ({ ...prev, micLevel: 0 }));
+    } catch (err) {
+      console.error('Error enviando chat en vivo:', err);
+      setCallStatus('listening');
+    } finally {
+      setIsSendingInCallChat(false);
     }
   };
 
   // Finalizar llamada
-  const endLiveSession = (shouldNavigate = true) => {
+  const endLiveSession = (navigateBack = true) => {
     audioPlayerRef.current?.stop();
     audioSessionRef.current?.stop();
     cameraManagerRef.current?.stop();
     screenManagerRef.current?.stop();
-    api.cancelLiveTask(sessionIdRef.current).catch(() => {});
-    setCallState('ended');
-    if (shouldNavigate) {
-      navigate('/chat');
+    if (navigateBack) {
+      navigate(-1);
     }
   };
 
-  const getAvatarMode = () => {
-    if (callState === 'speaking') return 'speaking';
-    if (callState === 'processing') return 'thinking';
-    return 'idle';
-  };
+  // Modo del Avatar según estado de la llamada
+  const avatarMode: AvatarState = (() => {
+    switch (callStatus) {
+      case 'speaking':
+        return 'speaking';
+      case 'thinking':
+        return 'thinking';
+      case 'listening':
+        return 'listening';
+      case 'muted':
+        return 'sleeping';
+      default:
+        return 'idle';
+    }
+  })();
+
+  const currentAudioLevel = callStatus === 'speaking' ? ttsAudioLevel : micAudioLevel;
 
   return (
-    <div className="flex flex-col h-screen bg-danonino-bg text-slate-100 overflow-hidden select-none">
-      {/* Input de archivo de captura de pantalla oculto */}
-      <input
-        ref={screenFileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleScreenFileSelected}
-      />
-
-      {/* Barra superior de telemetría y estado */}
-      <div className="flex items-center justify-between px-4 py-3 bg-danonino-surface/80 border-b border-danonino-border/80 z-20">
+    <div className="relative min-h-[100dvh] bg-danonino-bg flex flex-col justify-between overflow-hidden select-none safe-top safe-bottom">
+      {/* 1. Barra Superior Discreta de Estado */}
+      <div className="p-4 z-20 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-danonino-cyan animate-pulse" />
-          <span className="font-semibold text-xs tracking-wider uppercase text-danonino-cyan">Danonino Live</span>
-        </div>
-
-        {/* Telemetría en vivo */}
-        <div className="flex items-center gap-2.5 text-[10px] font-mono text-slate-400 bg-danonino-card/70 px-2.5 py-1 rounded-full border border-danonino-border/60">
-          <div className="flex items-center gap-1" title="Latencia">
-            <Clock className="w-3 h-3 text-danonino-lavender" />
-            <span>{telemetry.latencyMs}ms</span>
-          </div>
-          <div className="flex items-center gap-1" title="Tokens estimados">
-            <Layers className="w-3 h-3 text-danonino-cyan" />
-            <span>{telemetry.tokensEst} tok</span>
-          </div>
-          {streamMode !== 'voice_only' && (
-            <div className="flex items-center gap-1 text-emerald-400" title="FPS de visión">
-              <Eye className="w-3 h-3" />
-              <span>{telemetry.fps} fps</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Área central interactiva */}
-      <div className="flex-1 relative flex flex-col items-center justify-center p-4">
-        {/* Previsualización de Cámara o Captura de Pantalla (PiP) */}
-        <div
-          className={`transition-all duration-300 rounded-2xl overflow-hidden border border-danonino-border/80 shadow-2xl bg-black ${
-            cameraActive || screenActive || screenShotBase64 ? 'w-full max-w-xs h-52 mb-3 relative' : 'hidden'
-          }`}
-        >
-          {cameraActive ? (
-            <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          ) : screenShotBase64 ? (
-            <img src={screenShotBase64} alt="Pantalla" className="w-full h-full object-contain bg-slate-900" />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/90 text-center p-3">
-              <Monitor className="w-8 h-8 text-purple-400 mb-1.5 animate-pulse" />
-              <span className="text-xs font-semibold text-slate-200">Transmitiendo Pantalla de Android</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">Danonino observa tu pantalla en vivo</span>
-            </div>
-          )}
-
-          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-mono text-danonino-cyan flex items-center gap-1">
-            <Eye className="w-3 h-3" />
-            <span>
-              {cameraActive
-                ? facingMode === 'user'
-                  ? 'Cámara Frontal'
-                  : 'Cámara Trasera'
-                : screenShotBase64
-                ? 'Captura de Pantalla'
-                : 'Pantalla Android en Vivo'}
-            </span>
-          </div>
-
-          {cameraActive && (
-            <button
-              onClick={switchFacing}
-              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:text-danonino-cyan transition-colors"
-              title="Cambiar cámara"
-            >
-              <SwitchCamera className="w-4 h-4" />
-            </button>
-          )}
-
-          {screenShotBase64 && (
-            <button
-              onClick={() => {
-                setScreenShotBase64(null);
-                setScreenActive(false);
-                setStreamMode('voice_only');
-              }}
-              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:text-red-400 transition-colors"
-              title="Quitar captura"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Avatar Central Reactivo */}
-        <div className="relative flex flex-col items-center">
-          <div
-            className={`transition-transform duration-200 ${
-              callState === 'speaking' ? 'scale-110' : callState === 'listening' ? 'scale-105' : 'scale-100'
-            }`}
-          >
-            <DanoninoAvatar size="xl" mode={getAvatarMode()} showStatusBadge={false} />
-          </div>
-
-          {/* Estado de la llamada badge */}
-          <div className="mt-3 px-3 py-1 rounded-full text-xs font-mono font-medium border border-danonino-border/80 bg-danonino-card/90 shadow-sm flex items-center gap-2">
-            {callState === 'speaking' && (
-              <>
-                <span className="w-2 h-2 rounded-full bg-danonino-lavender animate-ping" />
-                <span className="text-danonino-lavender font-bold">Danonino Hablando</span>
-              </>
-            )}
-            {callState === 'listening' && (
-              <>
-                <span className="w-2 h-2 rounded-full bg-danonino-cyan animate-pulse" />
-                <span className="text-danonino-cyan">Escuchando...</span>
-              </>
-            )}
-            {callState === 'processing' && (
-              <>
-                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-spin" />
-                <span className="text-yellow-400">Procesando respuesta...</span>
-              </>
-            )}
-            {callState === 'interrupted' && (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-400" />
-                <span className="text-red-400 font-bold">Interrumpido</span>
-              </>
-            )}
-            {callState === 'connecting' && (
-              <>
-                <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
-                <span className="text-slate-400">Conectando...</span>
-              </>
-            )}
-          </div>
-
-          {/* Indicador de Nivel de Micrófono en Tiempo Real */}
-          <div className="w-40 mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danonino-card/60 border border-danonino-border/50">
-            <Radio
-              className={`w-3 h-3 ${
-                isMicMuted ? 'text-red-400' : telemetry.micLevel > 20 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-danonino-card/80 border border-danonino-border/80 text-xs">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                callStatus === 'speaking'
+                  ? 'bg-danonino-cyan animate-pulse'
+                  : callStatus === 'thinking'
+                  ? 'bg-danonino-violet animate-ping'
+                  : callStatus === 'muted'
+                  ? 'bg-slate-500'
+                  : 'bg-danonino-success animate-pulse'
               }`}
             />
-            <div className="flex-1 bg-slate-800 h-1.5 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-75 ${
-                  isMicMuted ? 'bg-red-500' : 'bg-gradient-to-r from-danonino-cyan to-danonino-lavender'
-                }`}
-                style={{ width: isMicMuted ? '100%' : `${Math.min(100, telemetry.micLevel * 1.8)}%` }}
-              />
-            </div>
-            <span className="text-[9px] font-mono text-slate-400 w-12 text-right">
-              {isMicMuted ? 'MUTE' : `${telemetry.micLevel}%`}
+            <span className="font-mono text-[11px] text-slate-200">
+              {callStatus === 'speaking'
+                ? 'Respondiendo'
+                : callStatus === 'thinking'
+                ? 'Procesando'
+                : callStatus === 'muted'
+                ? 'Micrófono Desactivado'
+                : 'Escuchando'}
             </span>
           </div>
-        </div>
 
-        {/* Subtítulos y Transcripción en Vivo */}
-        <div className="w-full max-w-sm mt-4 min-h-[56px] px-4 py-2 rounded-xl bg-danonino-card/60 border border-danonino-border/40 text-center">
-          {callState === 'speaking' ? (
-            <p className="text-xs text-danonino-lavender font-medium line-clamp-3 leading-relaxed">
-              {agentReply}
-            </p>
-          ) : liveTranscript ? (
-            <p className="text-xs text-slate-300 italic line-clamp-2">
-              "{liveTranscript}"
-            </p>
-          ) : (
-            <p className="text-[11px] text-slate-500 font-mono">
-              Habla o pulsa el micrófono para hablar...
-            </p>
+          {screenActive && (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-danonino-cyan/15 border border-danonino-cyan/40 text-[10px] text-danonino-cyan font-bold animate-pulse">
+              <Monitor className="w-3 h-3" />
+              <span>Pantalla en Vivo</span>
+            </div>
+          )}
+
+          {cameraActive && (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-danonino-violet/15 border border-danonino-violet/40 text-[10px] text-danonino-lavender font-bold">
+              <Video className="w-3 h-3" />
+              <span>Cámara Activa</span>
+            </div>
           )}
         </div>
 
-        {/* Visualizador de Forma de Onda */}
-        <div className="w-full max-w-xs mt-2 h-8 flex items-center justify-center">
-          <canvas ref={canvasWaveformRef} width={280} height={32} className="w-full h-full opacity-80" />
-        </div>
-
-        {/* Botón Central Destacado: Pulsar para hablar / Enviar texto */}
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            onClick={handleToggleManualRecord}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium text-xs shadow-lg transition-all active:scale-95 border ${
-              isManualRecording
-                ? 'bg-red-500 text-white border-red-400 animate-pulse'
-                : 'bg-danonino-cyan/20 border-danonino-cyan text-danonino-cyan hover:bg-danonino-cyan/30'
-            }`}
-          >
-            <Mic className="w-4 h-4" />
-            <span>{isManualRecording ? 'Soltar para enviar audio' : 'Pulsar para hablar'}</span>
-          </button>
-
-          <button
-            onClick={() => setShowTextInput((p) => !p)}
-            className="p-2.5 rounded-2xl bg-danonino-card border border-danonino-border text-slate-300 hover:text-white"
-            title="Escribir mensaje"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Input de texto auxiliar flotante */}
-        {showTextInput && (
-          <form onSubmit={handleSendText} className="w-full max-w-xs mt-2 flex items-center gap-1.5 animate-fade-in">
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Escribe algo a Danonino..."
-              className="flex-1 bg-danonino-card text-xs text-slate-100 px-3 py-2 rounded-xl border border-danonino-border focus:border-danonino-cyan outline-none"
-            />
-            <button
-              type="submit"
-              className="p-2 bg-danonino-cyan text-danonino-bg font-bold rounded-xl text-xs"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
-        )}
-      </div>
-
-      {/* Barra de Controles Inferior */}
-      <div className="p-4 bg-danonino-surface/95 border-t border-danonino-border/80 flex items-center justify-around max-w-md mx-auto w-full z-20">
-        {/* Silenciar micrófono */}
-        <button
-          onClick={toggleMic}
-          className={`p-3.5 rounded-2xl transition-all border ${
-            isMicMuted
-              ? 'bg-red-500/20 border-red-500/50 text-red-400'
-              : 'bg-danonino-card border-danonino-border hover:border-danonino-cyan text-slate-200'
-          }`}
-          title={isMicMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
-        >
-          {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-        </button>
-
-        {/* Activar Cámara */}
-        <button
-          onClick={toggleCamera}
-          className={`p-3.5 rounded-2xl transition-all border ${
-            cameraActive
-              ? 'bg-danonino-cyan/20 border-danonino-cyan text-danonino-cyan'
-              : 'bg-danonino-card border-danonino-border hover:border-danonino-cyan text-slate-200'
-          }`}
-          title={cameraActive ? 'Apagar cámara' : 'Encender cámara'}
-        >
-          {cameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-        </button>
-
-        {/* Compartir Pantalla / Subir Captura */}
-        <button
-          onClick={toggleScreenShare}
-          className={`p-3.5 rounded-2xl transition-all border ${
-            screenActive || screenShotBase64
-              ? 'bg-purple-500/20 border-purple-500 text-purple-400'
-              : 'bg-danonino-card border-danonino-border hover:border-purple-400 text-slate-200'
-          }`}
-          title={screenActive || screenShotBase64 ? 'Cerrar pantalla compartida' : 'Compartir pantalla / captura'}
-        >
-          <Monitor className="w-5 h-5" />
-        </button>
-
-        {/* Botón de Interrupción Manual (Barge-In) */}
-        {callState === 'speaking' && (
-          <button
-            onClick={handleBargeIn}
-            className="p-3.5 rounded-2xl transition-all bg-amber-500/20 border border-amber-500 text-amber-400 hover:bg-amber-500/30 animate-pulse"
-            title="Interrumpir"
-          >
-            <Square className="w-5 h-5 fill-current" />
-          </button>
-        )}
-
-        {/* Colgar / Finalizar llamada */}
         <button
           onClick={() => endLiveSession(true)}
-          className="p-3.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white transition-all shadow-lg active:scale-95"
-          title="Finalizar llamada"
+          className="p-2 rounded-full bg-danonino-card/80 border border-danonino-border text-slate-400 hover:text-white transition-colors"
+          title="Minimizar llamada"
         >
-          <PhoneOff className="w-5 h-5" />
+          <ChevronDown className="w-5 h-5" />
         </button>
       </div>
+
+      {/* 2. Centro Visual: Avatar Hero y Ondas de Voz Reales */}
+      <div className="flex-1 flex flex-col items-center justify-center relative px-4 z-10">
+        {/* Vista previa miniatura de la cámara cuando está activa */}
+        {cameraActive && (
+          <div className="absolute top-2 right-4 w-28 h-36 rounded-2xl overflow-hidden border-2 border-danonino-cyan/60 shadow-2xl z-20 bg-black">
+            <video
+              ref={videoPreviewRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            <button
+              onClick={flipCamera}
+              className="absolute bottom-1.5 right-1.5 p-1 rounded-lg bg-black/60 text-white hover:text-danonino-cyan transition-colors"
+              title="Cambiar cámara"
+            >
+              <SwitchCamera className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Avatar Expresivo Hero */}
+        <div className="relative mb-6">
+          <DanoninoAvatar
+            mode={avatarMode}
+            size="hero"
+            audioLevel={currentAudioLevel}
+            onClick={callStatus === 'speaking' ? handleInterrupt : undefined}
+          />
+
+          {/* Botón táctil de interrupción si Danonino está hablando */}
+          {callStatus === 'speaking' && (
+            <button
+              onClick={handleInterrupt}
+              className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-bold animate-pulse hover:bg-rose-500/30 transition-all shadow-md"
+            >
+              <StopCircle className="w-3 h-3" />
+              <span>Interrumpir</span>
+            </button>
+          )}
+        </div>
+
+        {/* Visualizador de Ondas de Frecuencia de Audio Reales */}
+        <div className="w-full max-w-xs h-10 px-4">
+          <canvas
+            ref={canvasWaveformRef}
+            width={320}
+            height={40}
+            className="w-full h-full opacity-80"
+          />
+        </div>
+      </div>
+
+      {/* 3. Subtítulos en Tiempo Real */}
+      <div className="px-5 mb-4 z-20">
+        <div className="glass-panel p-3.5 rounded-2xl border border-danonino-border/70 space-y-2 min-h-[72px] flex flex-col justify-center">
+          {botSubtitle ? (
+            <div className="flex items-start gap-2 animate-fade-in">
+              <span className="text-[10px] uppercase font-bold text-danonino-cyan bg-danonino-cyan/10 px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5">
+                Danonino
+              </span>
+              <p className="text-xs text-slate-100 leading-relaxed font-medium">
+                {botSubtitle}
+              </p>
+            </div>
+          ) : userSubtitle ? (
+            <div className="flex items-start gap-2 animate-fade-in">
+              <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5">
+                Tú
+              </span>
+              <p className="text-xs text-slate-300 italic">
+                «{userSubtitle}»
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 text-center italic">
+              Habla libremente. Danonino te escucha en tiempo real.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Barra Ergonómica de Controles */}
+      <div className="p-4 z-20">
+        <div className="glass-panel p-3 rounded-3xl border border-danonino-border/80 flex items-center justify-around max-w-sm mx-auto shadow-2xl">
+          {/* Silenciar Micrófono */}
+          <button
+            onClick={toggleMute}
+            className={`p-3 rounded-2xl transition-all active:scale-95 ${
+              isMicMuted
+                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                : 'bg-danonino-card text-slate-200 border border-danonino-border hover:text-danonino-cyan'
+            }`}
+            title={isMicMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+          >
+            {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </button>
+
+          {/* Activar/Desactivar Cámara */}
+          <button
+            onClick={toggleCamera}
+            className={`p-3 rounded-2xl transition-all active:scale-95 ${
+              cameraActive
+                ? 'bg-danonino-cyan/20 text-danonino-cyan border border-danonino-cyan/50 shadow-neon'
+                : 'bg-danonino-card text-slate-200 border border-danonino-border hover:text-danonino-cyan'
+            }`}
+            title="Cámara"
+          >
+            {cameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+          </button>
+
+          {/* Compartir Pantalla */}
+          <button
+            onClick={toggleScreenShare}
+            className={`p-3 rounded-2xl transition-all active:scale-95 ${
+              screenActive
+                ? 'bg-danonino-violet/20 text-danonino-lavender border border-danonino-violet/50 shadow-neon'
+                : 'bg-danonino-card text-slate-200 border border-danonino-border hover:text-danonino-cyan'
+            }`}
+            title="Compartir pantalla"
+          >
+            <Monitor className="w-5 h-5" />
+          </button>
+
+          {/* Chat durante la llamada */}
+          <button
+            onClick={() => setShowInCallChat(true)}
+            className="p-3 rounded-2xl bg-danonino-card text-slate-200 border border-danonino-border hover:text-danonino-cyan transition-all active:scale-95 relative"
+            title="Abrir chat en llamada"
+          >
+            <MessageSquare className="w-5 h-5" />
+            {inCallMessages.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-danonino-cyan" />
+            )}
+          </button>
+
+          {/* Colgar llamada */}
+          <button
+            onClick={() => endLiveSession(true)}
+            className="p-3 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all active:scale-95"
+            title="Finalizar llamada"
+          >
+            <PhoneOff className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* 5. Panel Deslizable de Chat durante la Llamada (Drawer) */}
+      {showInCallChat && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex flex-col justify-end animate-fade-in">
+          <div className="glass-panel h-[70vh] rounded-t-3xl border-t border-danonino-border/80 flex flex-col p-4 shadow-2xl">
+            {/* Cabecera del Drawer */}
+            <div className="flex items-center justify-between pb-3 border-b border-danonino-border/60">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-danonino-cyan" />
+                <h3 className="text-sm font-bold text-slate-100">Chat en Vivo</h3>
+                <span className="text-[10px] text-danonino-cyan font-mono bg-danonino-cyan/10 px-2 py-0.5 rounded-full">
+                  Llamada Activa
+                </span>
+              </div>
+              <button
+                onClick={() => setShowInCallChat(false)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Mensajes en la llamada */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2.5 no-scrollbar">
+              {inCallMessages.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-center text-xs text-slate-500 italic">
+                  Las transcripciones de la llamada y tus mensajes de texto aparecerán aquí.
+                </div>
+              ) : (
+                inCallMessages.map((msg, idx) => (
+                  <div
+                    key={msg.id || idx}
+                    className={`flex flex-col ${msg.fromMe ? 'items-end' : 'items-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                        msg.fromMe
+                          ? 'bg-danonino-blue text-white rounded-tr-xs'
+                          : 'bg-danonino-card border border-danonino-border text-slate-100 rounded-tl-xs'
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold block mb-0.5 opacity-70">
+                        {msg.sender}
+                      </span>
+                      <p>{msg.text}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={inCallChatEndRef} />
+            </div>
+
+            {/* Formulario de texto rápido durante la llamada */}
+            <form onSubmit={handleSendInCallChat} className="pt-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={inCallInput}
+                onChange={(e) => setInCallInput(e.target.value)}
+                placeholder="Escribe a Danonino..."
+                className="flex-1 bg-danonino-card text-xs text-slate-100 px-3.5 py-2.5 rounded-xl border border-danonino-border focus:outline-none focus:border-danonino-cyan"
+              />
+              <button
+                type="submit"
+                disabled={!inCallInput.trim() || isSendingInCallChat}
+                className="p-2.5 bg-danonino-cyan text-danonino-bg rounded-xl font-bold hover:opacity-90 active:scale-95 disabled:opacity-40"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
