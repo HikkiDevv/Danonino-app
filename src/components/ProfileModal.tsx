@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, WhatsAppLinkData } from '../types';
 import { api } from '../services/api';
-import { X, User, Shield, LogOut, Check, Copy, MessageSquare, RefreshCw, KeyRound } from 'lucide-react';
+import { X, User, Shield, LogOut, Check, Copy, MessageSquare, RefreshCw, KeyRound, ExternalLink } from 'lucide-react';
 
 interface ProfileModalProps {
   user: UserProfile;
@@ -24,6 +24,46 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [savingName, setSavingName] = useState(false);
   const [linkData, setLinkData] = useState<WhatsAppLinkData | null>(null);
   const [loadingLink, setLoadingLink] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // Sincronizar automáticamente el perfil fresco del backend al abrir el modal
+  const fetchFreshProfile = async () => {
+    try {
+      setCheckingStatus(true);
+      const updated = await api.getMe();
+      if (updated) {
+        onUserUpdated(updated);
+        if (updated.whatsappVinculos && updated.whatsappVinculos.length > 0) {
+          setLinkData(null);
+        }
+      }
+    } catch (err) {
+      console.error('Error sincronizando perfil:', err);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchFreshProfile();
+    }
+  }, [isOpen]);
+
+  // Si hay un código de vinculación pendiente, verificar periódicamente cada 3 segundos
+  useEffect(() => {
+    if (!isOpen || !linkData) return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.getMe();
+        if (updated.whatsappVinculos && updated.whatsappVinculos.length > 0) {
+          onUserUpdated(updated);
+          setLinkData(null);
+        }
+      } catch (_) {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isOpen, linkData]);
 
   if (!isOpen) return null;
 
@@ -155,20 +195,37 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <MessageSquare className="w-3.5 h-3.5" />
               <span>Vínculo con WhatsApp</span>
             </div>
-            {isWaLinked ? (
-              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
-                Vinculado
-              </span>
-            ) : (
-              <span className="text-[9px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded-full font-bold">
-                No vinculado
-              </span>
-            )}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={fetchFreshProfile}
+                disabled={checkingStatus}
+                className="p-1 text-slate-400 hover:text-emerald-400 transition-colors"
+                title="Sincronizar estado ahora"
+              >
+                <RefreshCw className={`w-3 h-3 ${checkingStatus ? 'animate-spin text-emerald-400' : ''}`} />
+              </button>
+              {isWaLinked ? (
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
+                  Vinculado
+                </span>
+              ) : (
+                <span className="text-[9px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded-full font-bold">
+                  No vinculado
+                </span>
+              )}
+            </div>
           </div>
 
           {isWaLinked ? (
-            <div className="text-[11px] text-slate-300">
-              Asociado a: <code className="text-emerald-300">{user.whatsappVinculos?.[0]?.whatsapp_jid}</code>
+            <div className="bg-danonino-bg p-2.5 rounded-xl border border-emerald-500/30 space-y-1">
+              <span className="text-[10px] text-slate-400 block">Número/JID verificado:</span>
+              <code className="text-emerald-300 font-mono text-[11px] block select-all">
+                {user.whatsappVinculos?.[0]?.whatsapp_jid}
+              </code>
+              <p className="text-[9px] text-slate-500">
+                Tus conversaciones y recuerdos de WhatsApp se sincronizan con este perfil de forma privada.
+              </p>
             </div>
           ) : (
             <div className="space-y-2">

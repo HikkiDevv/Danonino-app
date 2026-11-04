@@ -37,8 +37,15 @@ const AppLayout: React.FC = () => {
   const refreshState = async () => {
     if (!getUserToken()) return;
     try {
-      const st = await api.getStatus().catch(() => null);
+      const [st, me] = await Promise.all([
+        api.getStatus().catch(() => null),
+        api.getMe().catch(() => null)
+      ]);
       if (st) setStatus(st);
+      if (me) {
+        setCurrentUserState(me);
+        saveCurrentUser(me);
+      }
     } catch (err) {
       console.error('Error refrescando estado general:', err);
     }
