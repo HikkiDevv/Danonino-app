@@ -1,11 +1,10 @@
 // danonino-app/src/services/liveAudio.ts
-// Gestión avanzada de Audio para Android: Prevención de bucle acústico, Mute de Hardware y MediaRecorder
+// Gestión de Audio Nativa: MediaRecorder de alta fidelidad, VAD calibrado y Reproductor HTML5 sin interferencias
 
 export interface AudioCallbacks {
   onAudioLevel?: (level: number) => void;
   onSpeechStart?: () => void;
-  onSpeechEnd?: (audioBase64: string, transcript: string) => void;
-  onBargeIn?: () => void;
+  onSpeechEnd?: (audioBase64: string) => void;
 }
 
 export class LiveAudioSession {
@@ -23,9 +22,6 @@ export class LiveAudioSession {
   private recordingStartTime = 0;
 
   private vadSilenceTimer: any = null;
-
-  private recognition: any = null;
-  private currentTranscript = '';
 
   constructor(private callbacks: AudioCallbacks = {}) {}
 
@@ -55,7 +51,6 @@ export class LiveAudioSession {
     }
 
     this.startLevelMonitoring();
-    this.initOptionalSpeechRecognition();
     return stream;
   }
 
@@ -125,14 +120,14 @@ export class LiveAudioSession {
 
       this.callbacks.onAudioLevel?.(level);
 
-      // Si el agente está hablando, NO activamos auto-grabación para no capturar el altavoz
+      // Si el agente está hablando, NO auto-grabamos para no capturar el altavoz del teléfono
       if (this.isAgentSpeaking) {
         this.animFrameId = requestAnimationFrame(update);
         return;
       }
 
-      // Umbral calibrado de voz humana real (30 dB)
-      const SPEECH_THRESHOLD = 30;
+      // Umbral calibrado de voz humana intencional (32 dB)
+      const SPEECH_THRESHOLD = 32;
 
       if (level > SPEECH_THRESHOLD) {
         if (!this.isUserSpeaking) {
@@ -146,20 +141,17 @@ export class LiveAudioSession {
           this.vadSilenceTimer = null;
         }
       } else {
-        // Silencio sostenido por 950ms tras haber hablado
+        // Silencio sostenido por 1000ms tras haber hablado
         if (this.isUserSpeaking && !this.vadSilenceTimer) {
           this.vadSilenceTimer = setTimeout(async () => {
             this.isUserSpeaking = false;
             this.vadSilenceTimer = null;
             const audioB64 = await this.stopSegmentRecording();
-            const transcript = this.currentTranscript.trim();
-            this.currentTranscript = '';
 
-            // Solo enviar si se capturó audio real válido
-            if (audioB64 || transcript) {
-              this.callbacks.onSpeechEnd?.(audioB64, transcript);
+            if (audioB64) {
+              this.callbacks.onSpeechEnd?.(audioB64);
             }
-          }, 950);
+          }, 1000);
         }
       }
 
@@ -197,7 +189,7 @@ export class LiveAudioSession {
         }
       };
 
-      this.mediaRecorder.start(150);
+      this.mediaRecorder.start(200);
       this.isRecording = true;
     } catch (e) {
       console.warn('Error iniciando MediaRecorder:', e);
@@ -212,8 +204,8 @@ export class LiveAudioSession {
         this.isRecording = false;
         const duration = Date.now() - this.recordingStartTime;
 
-        // Descartar grabaciones menores a 600ms para evitar chasquidos y fragmentos vacíos
-        if (duration < 600 || this.recordedChunks.length === 0) {
+        // Descartar grabaciones menores a 700ms para evitar ruidos accidentales
+        if (duration < 700 || this.recordedChunks.length === 0) {
           this.recordedChunks = [];
           resolve('');
           return;
@@ -224,8 +216,8 @@ export class LiveAudioSession {
         });
         this.recordedChunks = [];
 
-        // Si el archivo pesa menos de 3.5 KB, es ruido/silencio vacío
-        if (blob.size < 3500) {
+        // Si el archivo pesa menos de 4 KB, es ruido/silencio
+        if (blob.size < 4000) {
           resolve('');
           return;
         }
@@ -248,37 +240,6 @@ export class LiveAudioSession {
     });
   }
 
-  private initOptionalSpeechRecognition() {
-    const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechClass) return;
-
-    try {
-      this.recognition = new SpeechClass();
-      this.recognition.continuous = true;
-      this.recognition.interimResults = true;
-      this.recognition.lang = 'es-ES';
-
-      this.recognition.onresult = (event: any) => {
-        let text = '';
-        for (let i = 0; i < event.results.length; ++i) {
-          text += event.results[i][0].transcript + ' ';
-        }
-        this.currentTranscript = text;
-      };
-
-      this.recognition.onerror = () => {};
-      this.recognition.onend = () => {
-        if (this.micStream && !this.isMuted) {
-          try {
-            this.recognition.start();
-          } catch (_) {}
-        }
-      };
-
-      this.recognition.start();
-    } catch (_) {}
-  }
-
   public getWaveformData(): Uint8Array | null {
     if (!this.analyser || this.isMuted) return null;
     const buffer = new Uint8Array(this.analyser.frequencyBinCount);
@@ -289,14 +250,6 @@ export class LiveAudioSession {
   public stop() {
     if (this.vadSilenceTimer) clearTimeout(this.vadSilenceTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-
-    if (this.recognition) {
-      try {
-        this.recognition.onend = null;
-        this.recognition.stop();
-      } catch (_) {}
-      this.recognition = null;
-    }
 
     if (this.mediaRecorder && this.isRecording) {
       try {

@@ -1,5 +1,5 @@
 // danonino-app/src/views/LiveCallView.tsx
-// Danonino Live: Llamada Multimodal con Audio Real (HTML5 + edge-tts) y MediaRecorder robusto
+// Danonino Live: Voz, Visión y Captura de Pantalla sin interferencias acústicas
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -17,7 +17,8 @@ import {
   Clock,
   Eye,
   Send,
-  Radio
+  Radio,
+  X
 } from 'lucide-react';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
 import { LiveAudioSession, NativeAudioPlayer } from '../services/liveAudio';
@@ -34,6 +35,7 @@ export const LiveCallView: React.FC = () => {
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
+  const [screenShotBase64, setScreenShotBase64] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
   // Modo de habla manual (Push-to-talk)
@@ -57,6 +59,7 @@ export const LiveCallView: React.FC = () => {
   const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
   const cameraManagerRef = useRef<CameraManager | null>(null);
   const screenManagerRef = useRef<ScreenShareManager | null>(null);
+  const screenFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const canvasWaveformRef = useRef<HTMLCanvasElement | null>(null);
@@ -144,13 +147,10 @@ export const LiveCallView: React.FC = () => {
             setCallState('listening');
           }
         },
-        onSpeechEnd: (audioBase64, transcript) => {
-          if (!isInteractingRef.current && (audioBase64 || transcript)) {
-            handleUserTurn(transcript, audioBase64);
+        onSpeechEnd: (audioBase64) => {
+          if (!isInteractingRef.current && audioBase64) {
+            handleUserTurn('', audioBase64);
           }
-        },
-        onBargeIn: () => {
-          handleBargeIn();
         }
       });
 
@@ -197,7 +197,7 @@ export const LiveCallView: React.FC = () => {
     }
   };
 
-  // Barge-in: interrupción inmediata
+  // Barge-in manual: interrupción inmediata
   const handleBargeIn = async () => {
     if (callStateRef.current === 'speaking' || isInteractingRef.current) {
       audioPlayerRef.current?.stop();
@@ -215,11 +215,11 @@ export const LiveCallView: React.FC = () => {
     }
   };
 
-  // Procesar turno de habla (audio real grabado y/o transcripción + fotograma)
+  // Procesar turno de habla (audio real grabado y/o mensaje de texto + fotograma)
   const handleUserTurn = async (messageText?: string, audioBase64?: string) => {
     if (isInteractingRef.current) return;
     isInteractingRef.current = true;
-    setLiveTranscript(messageText || (audioBase64 ? 'Nota de voz en vivo...' : ''));
+    setLiveTranscript(messageText || (audioBase64 ? 'Procesando tu voz...' : ''));
     setCallState('processing');
 
     let imageBase64: string | undefined = undefined;
@@ -231,6 +231,9 @@ export const LiveCallView: React.FC = () => {
         imageBase64 = frame;
         mode = 'camera';
       }
+    } else if (screenShotBase64) {
+      imageBase64 = screenShotBase64;
+      mode = 'screen';
     } else if (screenActive && screenManagerRef.current) {
       const frame = screenManagerRef.current.captureFrame();
       if (frame) {
@@ -258,6 +261,11 @@ export const LiveCallView: React.FC = () => {
         tokensEst: res.tokensEst || Math.round((res.reply || '').length / 4),
         fps: cameraManagerRef.current?.getCurrentFps() || 0
       }));
+
+      // Si el backend identificó la transcripción de lo que dijo el usuario, mostrarla en pantalla
+      if (res.userTranscript) {
+        setLiveTranscript(res.userTranscript);
+      }
 
       if (res.ok && res.reply && !res.interrupted) {
         setAgentReply(res.reply);
@@ -308,13 +316,14 @@ export const LiveCallView: React.FC = () => {
     if (cameraActive) {
       cameraManagerRef.current?.stop();
       setCameraActive(false);
-      if (!screenActive) setStreamMode('voice_only');
+      if (!screenActive && !screenShotBase64) setStreamMode('voice_only');
     } else {
       try {
         if (screenActive) {
           screenManagerRef.current?.stop();
           setScreenActive(false);
         }
+        setScreenShotBase64(null);
         await cameraManagerRef.current?.start(videoPreviewRef.current || undefined, facingMode);
         setCameraActive(true);
         setStreamMode('camera');
@@ -331,28 +340,55 @@ export const LiveCallView: React.FC = () => {
     setFacingMode(nextFacing);
   };
 
-  // Toggle Pantalla Compartida
+  // Selector de Captura de Pantalla para Android
   const toggleScreenShare = async () => {
-    if (screenActive) {
+    if (screenActive || screenShotBase64) {
       screenManagerRef.current?.stop();
       setScreenActive(false);
+      setScreenShotBase64(null);
       setStreamMode('voice_only');
-    } else {
+      return;
+    }
+
+    if (cameraActive) {
+      cameraManagerRef.current?.stop();
+      setCameraActive(false);
+    }
+
+    // Intentar getDisplayMedia primero si el navegador lo admite
+    if (navigator.mediaDevices && typeof (navigator.mediaDevices as any).getDisplayMedia === 'function') {
       try {
-        if (cameraActive) {
-          cameraManagerRef.current?.stop();
-          setCameraActive(false);
-        }
         await screenManagerRef.current?.start(() => {
           setScreenActive(false);
           setStreamMode('voice_only');
         });
         setScreenActive(true);
         setStreamMode('screen');
-      } catch (err) {
-        alert('No se pudo iniciar la captura de pantalla.');
-      }
+        return;
+      } catch (_) {}
     }
+
+    // Si Android WebView no soporta getDisplayMedia, abrir selector de capturas de pantalla de Android
+    screenFileInputRef.current?.click();
+  };
+
+  const handleScreenFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const b64 = event.target?.result as string;
+      if (b64) {
+        setScreenShotBase64(b64);
+        setScreenActive(true);
+        setStreamMode('screen');
+        // Analizar la captura inmediatamente con Danonino
+        handleUserTurn('He compartido esta captura de mi pantalla. ¿Qué observas y cómo me ayudas?', undefined);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // Silenciar Micrófono con hardware mute real
@@ -386,6 +422,15 @@ export const LiveCallView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-danonino-bg text-slate-100 overflow-hidden select-none">
+      {/* Input de archivo de captura de pantalla oculto */}
+      <input
+        ref={screenFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleScreenFileSelected}
+      />
+
       {/* Barra superior de telemetría y estado */}
       <div className="flex items-center justify-between px-4 py-3 bg-danonino-surface/80 border-b border-danonino-border/80 z-20">
         <div className="flex items-center gap-2">
@@ -414,17 +459,29 @@ export const LiveCallView: React.FC = () => {
 
       {/* Área central interactiva */}
       <div className="flex-1 relative flex flex-col items-center justify-center p-4">
-        {/* Previsualización de Cámara o Pantalla (PiP) */}
+        {/* Previsualización de Cámara o Captura de Pantalla (PiP) */}
         <div
           className={`transition-all duration-300 rounded-2xl overflow-hidden border border-danonino-border/80 shadow-2xl bg-black ${
-            cameraActive || screenActive ? 'w-full max-w-xs h-52 mb-3 relative' : 'hidden'
+            cameraActive || screenActive || screenShotBase64 ? 'w-full max-w-xs h-52 mb-3 relative' : 'hidden'
           }`}
         >
-          <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          {cameraActive ? (
+            <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          ) : screenShotBase64 ? (
+            <img src={screenShotBase64} alt="Pantalla" className="w-full h-full object-contain bg-slate-900" />
+          ) : (
+            <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          )}
 
           <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-mono text-danonino-cyan flex items-center gap-1">
             <Eye className="w-3 h-3" />
-            <span>{cameraActive ? (facingMode === 'user' ? 'Cámara Frontal' : 'Cámara Trasera') : 'Pantalla'}</span>
+            <span>
+              {cameraActive
+                ? facingMode === 'user'
+                  ? 'Cámara Frontal'
+                  : 'Cámara Trasera'
+                : 'Captura de Pantalla'}
+            </span>
           </div>
 
           {cameraActive && (
@@ -434,6 +491,20 @@ export const LiveCallView: React.FC = () => {
               title="Cambiar cámara"
             >
               <SwitchCamera className="w-4 h-4" />
+            </button>
+          )}
+
+          {screenShotBase64 && (
+            <button
+              onClick={() => {
+                setScreenShotBase64(null);
+                setScreenActive(false);
+                setStreamMode('voice_only');
+              }}
+              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:text-red-400 transition-colors"
+              title="Quitar captura"
+            >
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -484,7 +555,11 @@ export const LiveCallView: React.FC = () => {
 
           {/* Indicador de Nivel de Micrófono en Tiempo Real */}
           <div className="w-40 mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danonino-card/60 border border-danonino-border/50">
-            <Radio className={`w-3 h-3 ${isMicMuted ? 'text-red-400' : telemetry.micLevel > 20 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'}`} />
+            <Radio
+              className={`w-3 h-3 ${
+                isMicMuted ? 'text-red-400' : telemetry.micLevel > 20 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'
+              }`}
+            />
             <div className="flex-1 bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all duration-75 ${
@@ -499,7 +574,7 @@ export const LiveCallView: React.FC = () => {
           </div>
         </div>
 
-        {/* Subtítulos y Transcripción */}
+        {/* Subtítulos y Transcripción en Vivo */}
         <div className="w-full max-w-sm mt-4 min-h-[56px] px-4 py-2 rounded-xl bg-danonino-card/60 border border-danonino-border/40 text-center">
           {callState === 'speaking' ? (
             <p className="text-xs text-danonino-lavender font-medium line-clamp-3 leading-relaxed">
@@ -511,7 +586,7 @@ export const LiveCallView: React.FC = () => {
             </p>
           ) : (
             <p className="text-[11px] text-slate-500 font-mono">
-              Habla o pulsa el botón del micrófono para hablar...
+              Habla o pulsa el micrófono para hablar...
             </p>
           )}
         </div>
@@ -521,7 +596,7 @@ export const LiveCallView: React.FC = () => {
           <canvas ref={canvasWaveformRef} width={280} height={32} className="w-full h-full opacity-80" />
         </div>
 
-        {/* Botón Central Destacado: Pulsar para hablar / Manos Libres */}
+        {/* Botón Central Destacado: Pulsar para hablar / Enviar texto */}
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={handleToggleManualRecord}
@@ -538,7 +613,7 @@ export const LiveCallView: React.FC = () => {
           <button
             onClick={() => setShowTextInput((p) => !p)}
             className="p-2.5 rounded-2xl bg-danonino-card border border-danonino-border text-slate-300 hover:text-white"
-            title="Escribir texto"
+            title="Escribir mensaje"
           >
             <Send className="w-4 h-4" />
           </button>
@@ -592,15 +667,15 @@ export const LiveCallView: React.FC = () => {
           {cameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
         </button>
 
-        {/* Compartir Pantalla */}
+        {/* Compartir Pantalla / Subir Captura */}
         <button
           onClick={toggleScreenShare}
           className={`p-3.5 rounded-2xl transition-all border ${
-            screenActive
+            screenActive || screenShotBase64
               ? 'bg-purple-500/20 border-purple-500 text-purple-400'
               : 'bg-danonino-card border-danonino-border hover:border-purple-400 text-slate-200'
           }`}
-          title={screenActive ? 'Detener compartir pantalla' : 'Compartir pantalla'}
+          title={screenActive || screenShotBase64 ? 'Cerrar pantalla compartida' : 'Compartir pantalla / captura'}
         >
           <Monitor className="w-5 h-5" />
         </button>

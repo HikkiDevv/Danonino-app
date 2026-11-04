@@ -111,6 +111,7 @@ export const api = {
   ): Promise<{
     ok: boolean;
     reply: string;
+    userTranscript?: string;
     audioBase64?: string;
     interrupted?: boolean;
     sessionId: string;
