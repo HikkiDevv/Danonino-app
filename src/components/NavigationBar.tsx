@@ -3,9 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   Sparkles,
   MessageSquare,
-  Compass,
   Brain,
-  Zap,
   Moon,
   PhoneCall
 } from 'lucide-react';
@@ -22,15 +20,13 @@ export const NavigationBar: React.FC = () => {
     { to: '/', label: 'Inicio', icon: Sparkles },
     { to: '/chat', label: 'Chat', icon: MessageSquare },
     { to: '/live', label: 'Live', icon: PhoneCall, isLive: true },
-    { to: '/habitat', label: 'Habitat', icon: Compass },
     { to: '/memory', label: 'Memoria', icon: Brain },
-    { to: '/evolution', label: 'Evolución', icon: Zap },
     { to: '/activity', label: 'Actividad', icon: Moon }
   ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-danonino-border/70 safe-bottom">
-      <div className="max-w-md mx-auto flex items-center justify-around px-1 py-1.5">
+      <div className="max-w-md mx-auto flex items-center justify-around px-2 py-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -38,7 +34,7 @@ export const NavigationBar: React.FC = () => {
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-all duration-200 ${
+                `flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 ${
                   isActive
                     ? tab.isLive
                       ? 'text-danonino-lavender scale-105 font-bold'
@@ -62,7 +58,7 @@ export const NavigationBar: React.FC = () => {
                   >
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className="text-[9px] mt-0.5 tracking-tight font-mono">{tab.label}</span>
+                  <span className="text-[10px] mt-0.5 tracking-tight font-mono">{tab.label}</span>
                 </>
               )}
             </NavLink>

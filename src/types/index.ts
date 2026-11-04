@@ -29,6 +29,14 @@ export interface AgentStatus {
     memoriasTotales: number;
     ciclosSueno: number;
   };
+  usuarioActual?: {
+    id: string;
+    username: string;
+    displayName: string;
+    mensajesPrivados: number;
+    recuerdosSemanticos: number;
+    ciclosSueno: number;
+  } | null;
 }
 
 export interface ChatMessage {

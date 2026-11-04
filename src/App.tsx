@@ -5,9 +5,7 @@ import { NavigationBar } from './components/NavigationBar';
 import { HomeView } from './views/HomeView';
 import { ChatView } from './views/ChatView';
 import { LiveCallView } from './views/LiveCallView';
-import { HabitatView } from './views/HabitatView';
 import { MemoryView } from './views/MemoryView';
-import { EvolutionView } from './views/EvolutionView';
 import { ActivityView } from './views/ActivityView';
 import { AuthView } from './views/AuthView';
 import { ProfileModal } from './components/ProfileModal';
@@ -30,7 +28,6 @@ const AppLayout: React.FC = () => {
     return token ? getCurrentUser() : null;
   });
   const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [habitat, setHabitat] = useState<HabitatState | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [customApiUrl, setCustomApiUrl] = useState(getBaseApiUrl());
@@ -40,12 +37,8 @@ const AppLayout: React.FC = () => {
   const refreshState = async () => {
     if (!getUserToken()) return;
     try {
-      const [st, hab] = await Promise.all([
-        api.getStatus().catch(() => null),
-        api.getHabitat().catch(() => null)
-      ]);
+      const st = await api.getStatus().catch(() => null);
       if (st) setStatus(st);
-      if (hab) setHabitat(hab);
     } catch (err) {
       console.error('Error refrescando estado general:', err);
     }
@@ -166,12 +159,10 @@ const AppLayout: React.FC = () => {
       {/* Contenido Principal con Rutas */}
       <main className="flex-1 w-full max-w-md mx-auto">
         <Routes>
-          <Route path="/" element={<HomeView status={status} habitat={habitat} onRefresh={refreshState} />} />
+          <Route path="/" element={<HomeView status={status} onRefresh={refreshState} />} />
           <Route path="/chat" element={<ChatView status={status} />} />
           <Route path="/live" element={<LiveCallView />} />
-          <Route path="/habitat" element={<HabitatView habitat={habitat} status={status} />} />
           <Route path="/memory" element={<MemoryView />} />
-          <Route path="/evolution" element={<EvolutionView />} />
           <Route path="/activity" element={<ActivityView />} />
         </Routes>
       </main>
