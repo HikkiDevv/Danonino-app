@@ -13,6 +13,8 @@ jobs:
   build-apk:
     name: Compilar APK Android
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: 1. Checkout del Código Fuente
@@ -62,14 +64,16 @@ jobs:
 
       - name: 11. Verificar Generación del APK
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+          RAW_APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$RAW_APK" ] || [ ! -f "$RAW_APK" ]; then
             echo "ERROR: El archivo APK no fue generado en android/app/build/outputs/apk/debug"
             exit 1
           fi
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
-          echo "APK generado exitosamente en: $APK_PATH"
-          ls -la "$APK_PATH"
+          FINAL_APK="android/app/build/outputs/apk/debug/Danonino-Evolution-v2.1.apk"
+          cp "$RAW_APK" "$FINAL_APK"
+          echo "APK_PATH=$FINAL_APK" >> $GITHUB_ENV
+          echo "APK generado exitosamente en: $FINAL_APK"
+          ls -la "$FINAL_APK"
 
       - name: 12. Publicar Artefacto Descargable en GitHub Actions
         uses: actions/upload-artifact@v4
@@ -78,3 +82,15 @@ jobs:
           path: ${{ env.APK_PATH }}
           retention-days: 14
           if-no-files-found: error
+
+      - name: 13. Publicar Release Pública con APK Directo (Sin Login)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.1-debug
+          name: Danonino Evolution v2.1 (Debug APK)
+          body: |
+            Descarga directa de APK Danonino Evolution 2.1 con ONEIROS Living Engine y Memoria Persistente SQLite.
+            Instala directamente este archivo .apk en tu dispositivo Android.
+          files: ${{ env.APK_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
