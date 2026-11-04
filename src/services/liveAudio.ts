@@ -1,5 +1,5 @@
 // danonino-app/src/services/liveAudio.ts
-// Gestión de Audio Nativa: MediaRecorder de alta fidelidad, VAD calibrado y Reproductor HTML5 sin interferencias
+// Motor de Audio de Alta Fidelidad: Captura PCM directa, Codificador WAV universal y Reproductor HTML5
 
 export interface AudioCallbacks {
   onAudioLevel?: (level: number) => void;
@@ -7,19 +7,59 @@ export interface AudioCallbacks {
   onSpeechEnd?: (audioBase64: string) => void;
 }
 
+function writeString(view: DataView, offset: number, string: string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+function encodeWAV(samples: Float32Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  // RIFF header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  // Subchunk 1 fmt
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size (16 para PCM)
+  view.setUint16(20, 1, true); // AudioFormat (1 para PCM)
+  view.setUint16(22, 1, true); // NumChannels (1 = mono)
+  view.setUint32(24, sampleRate, true); // SampleRate
+  view.setUint32(28, sampleRate * 2, true); // ByteRate (SampleRate * NumChannels * BitsPerSample/8)
+  view.setUint16(32, 2, true); // BlockAlign (NumChannels * BitsPerSample/8)
+  view.setUint16(34, 16, true); // BitsPerSample (16 bits)
+  // Subchunk 2 data
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  // Escribir muestras PCM con clamp a 16-bit
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
+}
+
 export class LiveAudioSession {
   private audioCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private processorNode: ScriptProcessorNode | null = null;
   private micStream: MediaStream | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
-  private recordedChunks: Blob[] = [];
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
   private animFrameId: number | null = null;
+
+  // Buffer de muestras PCM directas
+  private pcmChunks: Float32Array[] = [];
+  private isRecordingPCM = false;
+  private recordingStartTime = 0;
 
   private isAgentSpeaking = false;
   private isUserSpeaking = false;
-  private isRecording = false;
   private isMuted = false;
-  private recordingStartTime = 0;
 
   private vadSilenceTimer: any = null;
 
@@ -43,18 +83,37 @@ export class LiveAudioSession {
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume();
       }
-      const source = this.audioCtx.createMediaStreamSource(stream);
+
+      this.sourceNode = this.audioCtx.createMediaStreamSource(stream);
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.3;
-      source.connect(this.analyser);
+
+      // ScriptProcessor para captura continua directa de muestras PCM
+      this.processorNode = this.audioCtx.createScriptProcessor(4096, 1, 1);
+      this.processorNode.onaudioprocess = (e) => {
+        if (!this.isRecordingPCM || this.isMuted) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        // Clonar datos de muestra
+        const copy = new Float32Array(inputData.length);
+        copy.set(inputData);
+        this.pcmChunks.push(copy);
+      };
+
+      this.sourceNode.connect(this.analyser);
+      this.sourceNode.connect(this.processorNode);
+      // Conectar a destination con ganancia nula para evitar feedback local
+      const muteGain = this.audioCtx.createGain();
+      muteGain.gain.value = 0;
+      this.processorNode.connect(muteGain);
+      muteGain.connect(this.audioCtx.destination);
     }
 
     this.startLevelMonitoring();
     return stream;
   }
 
-  // Mute de Hardware real
+  // Mute de Hardware
   public setMuted(muted: boolean) {
     this.isMuted = muted;
     if (this.micStream) {
@@ -64,9 +123,8 @@ export class LiveAudioSession {
     }
 
     if (muted) {
-      if (this.isRecording) {
-        this.stopSegmentRecording();
-      }
+      this.isRecordingPCM = false;
+      this.pcmChunks = [];
       this.isUserSpeaking = false;
       if (this.vadSilenceTimer) {
         clearTimeout(this.vadSilenceTimer);
@@ -80,7 +138,6 @@ export class LiveAudioSession {
     return this.isMuted;
   }
 
-  // Cuando Danonino está hablando, desactivamos auto-VAD para evitar bucle con los altavoces
   public setAgentSpeaking(speaking: boolean) {
     this.isAgentSpeaking = speaking;
     if (speaking) {
@@ -88,9 +145,8 @@ export class LiveAudioSession {
         clearTimeout(this.vadSilenceTimer);
         this.vadSilenceTimer = null;
       }
-      if (this.isRecording) {
-        this.stopSegmentRecording();
-      }
+      this.isRecordingPCM = false;
+      this.pcmChunks = [];
       this.isUserSpeaking = false;
     }
   }
@@ -115,19 +171,18 @@ export class LiveAudioSession {
         sum += dataArray[i];
       }
       const average = sum / dataArray.length;
-      // Normalizar 0 a 100
       const level = Math.min(100, Math.round((average / 128) * 100));
 
       this.callbacks.onAudioLevel?.(level);
 
-      // Si el agente está hablando, NO auto-grabamos para no capturar el altavoz del teléfono
+      // Si Danonino está hablando, no auto-grabamos el altavoz
       if (this.isAgentSpeaking) {
         this.animFrameId = requestAnimationFrame(update);
         return;
       }
 
-      // Umbral calibrado de voz humana intencional (32 dB)
-      const SPEECH_THRESHOLD = 32;
+      // Umbral calibrado de voz (28 dB)
+      const SPEECH_THRESHOLD = 28;
 
       if (level > SPEECH_THRESHOLD) {
         if (!this.isUserSpeaking) {
@@ -141,7 +196,7 @@ export class LiveAudioSession {
           this.vadSilenceTimer = null;
         }
       } else {
-        // Silencio sostenido por 1000ms tras haber hablado
+        // Silencio sostenido por 900ms tras hablar
         if (this.isUserSpeaking && !this.vadSilenceTimer) {
           this.vadSilenceTimer = setTimeout(async () => {
             this.isUserSpeaking = false;
@@ -151,7 +206,7 @@ export class LiveAudioSession {
             if (audioB64) {
               this.callbacks.onSpeechEnd?.(audioB64);
             }
-          }, 1000);
+          }, 900);
         }
       }
 
@@ -161,82 +216,54 @@ export class LiveAudioSession {
     this.animFrameId = requestAnimationFrame(update);
   }
 
-  // Grabación de segmento de voz con MediaRecorder
   public startSegmentRecording() {
-    if (!this.micStream || this.isRecording || this.isMuted) return;
-    this.recordedChunks = [];
+    if (this.isMuted) return;
+    this.pcmChunks = [];
     this.recordingStartTime = Date.now();
-
-    let mimeType = 'audio/webm;codecs=opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      if (MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/webm';
-      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4';
-      } else {
-        mimeType = '';
-      }
-    }
-
-    try {
-      this.mediaRecorder = mimeType
-        ? new MediaRecorder(this.micStream, { mimeType })
-        : new MediaRecorder(this.micStream);
-
-      this.mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          this.recordedChunks.push(e.data);
-        }
-      };
-
-      this.mediaRecorder.start(200);
-      this.isRecording = true;
-    } catch (e) {
-      console.warn('Error iniciando MediaRecorder:', e);
-    }
+    this.isRecordingPCM = true;
   }
 
   public async stopSegmentRecording(): Promise<string> {
-    if (!this.mediaRecorder || !this.isRecording) return '';
+    this.isRecordingPCM = false;
+    const duration = Date.now() - this.recordingStartTime;
+
+    // Descartar si duró menos de 250ms o no hay chunks
+    if (duration < 250 || this.pcmChunks.length === 0) {
+      this.pcmChunks = [];
+      return '';
+    }
+
+    // Calcular longitud total de muestras
+    let totalLength = 0;
+    for (const chunk of this.pcmChunks) {
+      totalLength += chunk.length;
+    }
+
+    if (totalLength < 1000) {
+      this.pcmChunks = [];
+      return '';
+    }
+
+    // Unir chunks en un solo Float32Array
+    const merged = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of this.pcmChunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    this.pcmChunks = [];
+
+    const sampleRate = this.audioCtx?.sampleRate || 44100;
+    const wavBlob = encodeWAV(merged, sampleRate);
 
     return new Promise((resolve) => {
-      this.mediaRecorder!.onstop = async () => {
-        this.isRecording = false;
-        const duration = Date.now() - this.recordingStartTime;
-
-        // Permitir oraciones desde 250ms
-        if (duration < 250 || this.recordedChunks.length === 0) {
-          this.recordedChunks = [];
-          resolve('');
-          return;
-        }
-
-        const blob = new Blob(this.recordedChunks, {
-          type: this.mediaRecorder?.mimeType || 'audio/webm'
-        });
-        this.recordedChunks = [];
-
-        // Solo descartar buffers completamente vacíos menores a 200 bytes
-        if (blob.size < 200) {
-          resolve('');
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string) || '';
-          resolve(base64);
-        };
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(blob);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string) || '';
+        resolve(base64);
       };
-
-      try {
-        this.mediaRecorder!.stop();
-      } catch (_) {
-        this.isRecording = false;
-        resolve('');
-      }
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(wavBlob);
     });
   }
 
@@ -248,13 +275,23 @@ export class LiveAudioSession {
   }
 
   public stop() {
+    this.isRecordingPCM = false;
+    this.pcmChunks = [];
     if (this.vadSilenceTimer) clearTimeout(this.vadSilenceTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
 
-    if (this.mediaRecorder && this.isRecording) {
+    if (this.processorNode) {
       try {
-        this.mediaRecorder.stop();
+        this.processorNode.disconnect();
       } catch (_) {}
+      this.processorNode = null;
+    }
+
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.disconnect();
+      } catch (_) {}
+      this.sourceNode = null;
     }
 
     if (this.micStream) {
