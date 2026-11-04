@@ -7,6 +7,7 @@ import { ChatView } from './views/ChatView';
 import { LiveCallView } from './views/LiveCallView';
 import { MemoryView } from './views/MemoryView';
 import { ActivityView } from './views/ActivityView';
+import { OneirosView } from './views/OneirosView';
 import { AuthView } from './views/AuthView';
 import { ProfileModal } from './components/ProfileModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -171,6 +172,7 @@ const AppLayout: React.FC = () => {
           <Route path="/live" element={<LiveCallView />} />
           <Route path="/memory" element={<MemoryView />} />
           <Route path="/activity" element={<ActivityView />} />
+          <Route path="/oneiros" element={<OneirosView />} />
         </Routes>
       </main>
 

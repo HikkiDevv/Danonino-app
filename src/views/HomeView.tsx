@@ -9,7 +9,8 @@ import {
   Activity,
   Lightbulb,
   PhoneCall,
-  Clock
+  Clock,
+  Moon
 } from 'lucide-react';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
 import { AgentStatus } from '../types';
@@ -155,6 +156,22 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, onRefresh }) => {
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-slate-500" />
+        </div>
+
+        <div
+          onClick={() => navigate('/oneiros')}
+          className="glass-panel p-3.5 rounded-2xl flex items-center justify-between cursor-pointer border border-danonino-lavender/30 hover:border-danonino-lavender transition-all active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-danonino-lavender/20 text-danonino-lavender">
+              <Moon className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-200">Proyecto ONEIROS</div>
+              <div className="text-[10px] text-slate-400">Sueños lúcidos, reglas alterables y diario narrativo</div>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-danonino-lavender" />
         </div>
       </div>
     </div>

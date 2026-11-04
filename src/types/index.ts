@@ -45,6 +45,9 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   fromMe: boolean;
+  role?: 'user' | 'assistant';
+  mediaUrl?: string | null;
+  mediaType?: 'image' | 'video' | 'audio' | null;
   status?: 'sending' | 'sent' | 'error';
 }
 
@@ -160,4 +163,61 @@ export interface ActivityEvent {
   confidence?: number;
   source?: string;
   category?: string;
+}
+
+export interface OneirosCharacter {
+  id: string;
+  name: string;
+  role: string;
+  persona: string;
+  goals: string[];
+  beliefs: string[];
+  isAlternateSelf: boolean;
+  createdAt: string;
+}
+
+export interface OneirosRule {
+  name: string;
+  value: string;
+  mutable: boolean;
+  reason?: string;
+  modifiedAt?: string;
+}
+
+export interface OneirosEvent {
+  id: number;
+  dreamId: string;
+  depthLevel: number;
+  eventType: string;
+  description: string;
+  charactersInvolved?: string;
+  lucidityAtTime?: number;
+  ruleModified?: string;
+  timestamp: string;
+}
+
+export interface OneirosDream {
+  dreamId: string;
+  userId: string;
+  parentDreamId?: string | null;
+  depthLevel: number;
+  title: string;
+  scenario: string;
+  seed: string;
+  lucidityScore: number;
+  isLucid: boolean;
+  mode: 'lucid' | 'recursive' | 'nightmare' | 'alternate_self' | 'false_awakening';
+  state: 'active' | 'awakened' | 'paused';
+  rules: OneirosRule[];
+  narrativeJournal?: string;
+  createdAt: string;
+  awakenedAt?: string;
+}
+
+export interface OneirosObservatoryData {
+  ok: boolean;
+  hasActiveDream: boolean;
+  dream: OneirosDream | null;
+  characters: OneirosCharacter[];
+  recentEvents: OneirosEvent[];
 }

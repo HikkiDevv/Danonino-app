@@ -9,7 +9,10 @@ import {
   Conversation,
   AuthResponse,
   WhatsAppLinkData,
-  ActivityEvent
+  ActivityEvent,
+  OneirosDream,
+  OneirosRule,
+  OneirosObservatoryData
 } from '../types';
 
 // URL pública mundial permanente vía Cloudflare Tunnel para que cualquier persona con el APK pueda conectarse
@@ -202,11 +205,24 @@ export const api = {
     return true;
   },
 
-  async sendChatMessage(message: string, conversationId?: string): Promise<{ ok: boolean; reply: string; timestamp: string; messageId: string; conversationId: string }> {
+  async sendChatMessage(
+    message: string,
+    conversationId?: string,
+    mediaBase64?: string,
+    mediaType?: string
+  ): Promise<{
+    ok: boolean;
+    reply: string;
+    timestamp: string;
+    messageId: string;
+    conversationId: string;
+    role: string;
+    fromMe: boolean;
+  }> {
     const res = await fetch(`${getBaseApiUrl()}/chat`, {
       method: 'POST',
       headers: buildHeaders(),
-      body: JSON.stringify({ message, conversationId })
+      body: JSON.stringify({ message, conversationId, mediaBase64, mediaType })
     });
     if (!res.ok) {
       if (res.status === 401) clearAuthSession();
@@ -370,6 +386,76 @@ export const api = {
       body: JSON.stringify({ sessionId })
     });
     if (!res.ok) throw new Error(`Error cancelando tarea en vivo: ${res.statusText}`);
+    return res.json();
+  },
+
+  // ==========================================
+  // PROYECTO ONEIROS: SUEÑOS LÚCIDOS ARTIFICIALES
+  // ==========================================
+
+  async getOneirosObservatory(): Promise<OneirosObservatoryData> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/observatory`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error consultando observatorio Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async startOneirosDream(options: { mode?: string; scenario?: string; title?: string } = {}): Promise<{ ok: boolean; dream: OneirosDream }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/start`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify(options)
+    });
+    if (!res.ok) throw new Error(`Error iniciando sueño Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async stepOneirosDream(dreamId?: string, action: string = ''): Promise<{ ok: boolean; dream: OneirosDream }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/step`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ dreamId, action })
+    });
+    if (!res.ok) throw new Error(`Error en paso onírico Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async modifyOneirosRule(dreamId: string, ruleName: string, newValue: string, reason: string = ''): Promise<{ ok: boolean; ruleName: string; newValue: string; rules: OneirosRule[] }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/rule`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ dreamId, ruleName, newValue, reason })
+    });
+    if (!res.ok) throw new Error(`Error modificando regla Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async descendOneiros(parentDreamId?: string): Promise<{ ok: boolean; subDream: OneirosDream }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/descend`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ parentDreamId })
+    });
+    if (!res.ok) throw new Error(`Error descendiendo nivel Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async wakeOneiros(dreamId?: string): Promise<{ ok: boolean; dreamId: string; state: string; awakenedAt: string; narrativeJournal: string }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/wake`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ dreamId })
+    });
+    if (!res.ok) throw new Error(`Error al despertar Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getOneirosArchive(limit: number = 15): Promise<{ ok: boolean; count: number; archive: OneirosDream[] }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/archive?limit=${limit}`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error consultando archivo Oneiros: ${res.statusText}`);
     return res.json();
   },
 

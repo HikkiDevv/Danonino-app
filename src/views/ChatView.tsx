@@ -16,7 +16,11 @@ import {
   Square,
   Paperclip,
   Mic,
-  AlertCircle
+  Image as ImageIcon,
+  Video as VideoIcon,
+  X,
+  Play,
+  Pause
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api, getCurrentUser } from '../services/api';
@@ -44,23 +48,61 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
   const [showConvDropdown, setShowConvDropdown] = useState(false);
   const [infoPill, setInfoPill] = useState<string | null>(null);
 
+  // Estados de Multimedia y Notas de Voz
+  const [attachedMedia, setAttachedMedia] = useState<{
+    base64: string;
+    type: 'image' | 'video' | 'audio';
+    previewUrl: string;
+    name: string;
+  } | null>(null);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
 
   useEffect(() => {
     audioPlayerRef.current = new NativeAudioPlayer();
     return () => {
       audioPlayerRef.current?.stop();
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
   }, []);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  // Formato estricto a hora local de Perú (HH:mm)
+  const formatMessageTime = (ts?: string): string => {
+    if (!ts) {
+      return new Date().toLocaleTimeString('es-PE', {
+        timeZone: 'America/Lima',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    }
+    if (/^\d{2}:\d{2}$/.test(ts)) return ts;
+    try {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('es-PE', {
+          timeZone: 'America/Lima',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+      }
+    } catch (_) {}
+    return ts.slice(11, 16) || '00:00';
   };
 
   const loadConversationsAndHistory = async () => {
@@ -96,7 +138,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isSending]);
+  }, [messages, isSending, attachedMedia]);
 
   const handleSelectConversation = async (convId: string) => {
     setActiveConvId(convId);
@@ -144,6 +186,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     }
   };
 
+  // Reproducir respuesta por voz con TTS
   const toggleSpeak = async (id: string, text: string) => {
     if (!audioPlayerRef.current) return;
 
@@ -174,6 +217,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     }
   };
 
+  // Copiar al portapapeles
   const handleCopyText = async (id: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -184,17 +228,120 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     }
   };
 
-  const handleSend = async (textToSend?: string) => {
-    const texto = (textToSend || inputText).trim();
-    if (!texto || isSending) return;
+  // Manejo de Archivos Multimedia (Fotos / Videos)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (!textToSend) setInputText('');
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isImage && !isVideo) {
+      alert('Selecciona una imagen (JPG, PNG, WebP) o video (MP4, WebM).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setAttachedMedia({
+        base64,
+        type: isVideo ? 'video' : 'image',
+        previewUrl: URL.createObjectURL(file),
+        name: file.name
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Grabación de Notas de Voz
+  const startRecordingAudio = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/mp3' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setAttachedMedia({
+            base64,
+            type: 'audio',
+            previewUrl: URL.createObjectURL(audioBlob),
+            name: 'Nota de voz'
+          });
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecordingAudio(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      alert('No se pudo acceder al micrófono para grabar nota de voz: ' + err.message);
+    }
+  };
+
+  const stopRecordingAudio = () => {
+    if (mediaRecorderRef.current && isRecordingAudio) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingAudio(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+  };
+
+  const cancelRecordingAudio = () => {
+    if (mediaRecorderRef.current && isRecordingAudio) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingAudio(false);
+      audioChunksRef.current = [];
+      setAttachedMedia(null);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+  };
+
+  // Enviar mensaje con texto y/o multimedia
+  const handleSend = async (textToSend?: string) => {
+    const texto = (textToSend !== undefined ? textToSend : inputText).trim();
+    const mediaToSend = attachedMedia;
+
+    if (!texto && !mediaToSend) return;
+    if (isSending) return;
+
+    if (textToSend === undefined) setInputText('');
+    setAttachedMedia(null);
+
+    const horaPeru = new Date().toLocaleTimeString('es-PE', {
+      timeZone: 'America/Lima',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+
+    // Mensaje del usuario: SIEMPRE a la derecha (fromMe: true, role: 'user')
     const userMsg: ChatMessage = {
       id: 'local_' + Date.now(),
       sender: currentUser?.displayName || 'Usuario',
-      text: texto,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      fromMe: true
+      text: texto || (mediaToSend?.type === 'audio' ? 'Nota de voz' : mediaToSend?.type === 'video' ? 'Video' : 'Foto'),
+      timestamp: horaPeru,
+      fromMe: true,
+      role: 'user',
+      mediaUrl: mediaToSend?.base64,
+      mediaType: mediaToSend?.type
     };
 
     const newMessages = [...messages, userMsg];
@@ -205,14 +352,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
     abortControllerRef.current = new AbortController();
 
     try {
-      const res = await api.sendChatMessage(texto, activeConvId || undefined);
+      const res = await api.sendChatMessage(
+        texto,
+        activeConvId || undefined,
+        mediaToSend?.base64,
+        mediaToSend?.type
+      );
+
       if (res.ok && res.reply) {
+        // Respuesta de Danonino: SIEMPRE a la izquierda (fromMe: false, role: 'assistant', sender: 'Danonino')
         const botMsg: ChatMessage = {
           id: res.messageId || 'bot_' + Date.now(),
           sender: 'Danonino',
           text: res.reply,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          fromMe: false
+          timestamp: formatMessageTime(res.timestamp),
+          fromMe: false,
+          role: 'assistant'
         };
         setMessages([...newMessages, botMsg]);
       }
@@ -222,8 +377,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
           id: 'abort_' + Date.now(),
           sender: 'Danonino',
           text: 'Generación cancelada.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          fromMe: false
+          timestamp: horaPeru,
+          fromMe: false,
+          role: 'assistant'
         };
         setMessages((prev) => [...prev, abortedReply]);
       } else {
@@ -232,8 +388,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
           id: 'err_' + Date.now(),
           sender: 'Danonino',
           text: 'Hubo una interrupción en el procesamiento de tu mensaje. Puedes reintentar.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          fromMe: false
+          timestamp: horaPeru,
+          fromMe: false,
+          role: 'assistant'
         };
         setMessages((prev) => [...prev, errReply]);
       }
@@ -244,30 +401,32 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
   };
 
   const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     setIsSending(false);
   };
 
   const handleRetryLastMessage = () => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.fromMe);
+    const lastUserMsg = [...messages].reverse().find((m) => m.fromMe || m.role === 'user');
     if (lastUserMsg) {
       handleSend(lastUserMsg.text);
     }
-  };
-
-  const showFeatureNotice = (feature: string) => {
-    setInfoPill(`${feature}: Disponible en la versión Danonino Mindspace.`);
-    setTimeout(() => setInfoPill(null), 3500);
   };
 
   const currentConv = conversations.find((c) => c.id === activeConvId);
 
   return (
     <div className="flex flex-col h-[100dvh] max-h-[100dvh] pb-16 max-w-md mx-auto relative select-none">
+      {/* Input oculto para subir archivos */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Barra de Gestión de Conversación */}
-      <div className="px-3 py-2 bg-danonino-card/80 backdrop-blur-md border-b border-danonino-border/70 flex items-center justify-between text-xs text-slate-300 relative z-20">
+      <div className="px-3 py-2 bg-danonino-card/85 backdrop-blur-md border-b border-danonino-border/70 flex items-center justify-between text-xs text-slate-300 relative z-20">
         {/* Selector de Conversación */}
         <div className="relative">
           <button
@@ -342,18 +501,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
         </div>
       </div>
 
-      {/* Notificación Flotante */}
-      {infoPill && (
-        <div className="absolute top-12 left-4 right-4 z-30 p-2 rounded-xl bg-danonino-card/95 border border-danonino-cyan/40 text-danonino-cyan text-[11px] font-mono shadow-xl animate-fade-in flex items-center justify-between">
-          <span>{infoPill}</span>
-          <button onClick={() => setInfoPill(null)} className="text-slate-400 hover:text-slate-200 ml-2">
-            ×
-          </button>
-        </div>
-      )}
-
       {/* Lista de Mensajes */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
         {/* Separador de Fecha Inicial */}
         <div className="flex justify-center">
           <span className="px-3 py-0.5 rounded-full bg-danonino-card/70 border border-danonino-border/60 text-[10px] text-slate-400 font-mono">
@@ -366,49 +515,77 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
             <DanoninoAvatar size="lg" mode="idle" />
             <h3 className="text-sm font-semibold text-slate-200 mt-3">Conversación Privada</h3>
             <p className="text-xs text-slate-400 max-w-xs mt-1">
-              Tus recuerdos y mensajes están estrictamente aislados y encriptados en tu cuenta.
+              Tus mensajes, recuerdos y archivos adjuntos están encriptados y aislados estrictamente en tu cuenta.
             </p>
           </div>
         ) : (
           messages.map((msg, i) => {
-            const isMe = msg.fromMe;
+            // Mapeo estricto del rol: Si fromMe=true o role='user', o sender!=Danonino -> USUARIO A LA DERECHA
+            const isUser = msg.fromMe === true || msg.role === 'user' || (msg.sender && msg.sender.toLowerCase() !== 'danonino');
             const msgKey = String(msg.id || i);
             const isSpeaking = speakingMsgId === msgKey;
             const isCopied = copiedMsgId === msgKey;
+            const formattedTime = formatMessageTime(msg.timestamp);
 
             return (
               <div
                 key={msgKey}
-                className={`flex gap-2.5 ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in group`}
+                className={`flex gap-2.5 items-end ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in group`}
               >
-                {!isMe && (
+                {/* Avatar pequeño de Danonino solo a la izquierda */}
+                {!isUser && (
                   <DanoninoAvatar
                     size="sm"
                     mode={isSpeaking ? 'speaking' : isSending && i === messages.length - 1 ? 'thinking' : 'idle'}
                     showStatusBadge={false}
-                    className="mt-1 flex-shrink-0"
+                    className="flex-shrink-0 mb-1"
                   />
                 )}
 
+                {/* Burbuja de Mensaje */}
                 <div
-                  className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm transition-all ${
-                    isMe
-                      ? 'bg-danonino-blue text-white rounded-tr-xs'
-                      : 'bg-danonino-card border border-danonino-border/80 text-slate-100 rounded-tl-xs'
+                  className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm transition-all ${
+                    isUser
+                      ? 'bg-danonino-blue text-white rounded-br-xs'
+                      : 'bg-danonino-card border border-danonino-border/80 text-slate-100 rounded-bl-xs'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                  {/* Vista Previa de Archivo Adjunto (Foto / Video / Audio) */}
+                  {msg.mediaUrl && (
+                    <div className="mb-2 rounded-xl overflow-hidden border border-white/10 max-h-52">
+                      {msg.mediaType === 'image' || (!msg.mediaType && msg.mediaUrl.startsWith('data:image')) ? (
+                        <img
+                          src={msg.mediaUrl}
+                          alt="Imagen adjunta"
+                          className="w-full h-auto object-cover max-h-48 rounded-xl"
+                        />
+                      ) : msg.mediaType === 'video' || (!msg.mediaType && msg.mediaUrl.startsWith('data:video')) ? (
+                        <video
+                          src={msg.mediaUrl}
+                          controls
+                          className="w-full max-h-48 rounded-xl bg-black"
+                        />
+                      ) : (
+                        <audio src={msg.mediaUrl} controls className="w-full mt-1" />
+                      )}
+                    </div>
+                  )}
 
-                  {/* Barra de Acciones y Timestamp */}
+                  {/* Texto del Mensaje */}
+                  {msg.text && (
+                    <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                  )}
+
+                  {/* Barra de Acciones y Hora de Perú */}
                   <div
-                    className={`mt-1.5 flex items-center justify-between gap-3 text-[9px] pt-1 border-t ${
-                      isMe ? 'border-white/10 text-blue-200/70' : 'border-danonino-border/40 text-slate-400'
+                    className={`mt-1 flex items-center justify-between gap-3 text-[9px] pt-1 border-t ${
+                      isUser ? 'border-white/15 text-blue-100/70' : 'border-danonino-border/40 text-slate-400'
                     }`}
                   >
-                    {/* Timestamp */}
-                    <span>{msg.timestamp}</span>
+                    {/* Timestamp con Hora de Perú */}
+                    <span className="font-mono">{formattedTime}</span>
 
-                    {/* Acciones Rápidas (Copiar, TTS) */}
+                    {/* Acciones Rápidas */}
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleCopyText(msgKey, msg.text)}
@@ -422,7 +599,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
                         )}
                       </button>
 
-                      {!isMe && (
+                      {!isUser && (
                         <button
                           onClick={() => toggleSpeak(msgKey, msg.text)}
                           className="hover:text-danonino-cyan transition-colors p-0.5 rounded"
@@ -478,51 +655,111 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Caja de Entrada de Texto con Acciones */}
-      <div className="p-3 bg-danonino-bg/95 border-t border-danonino-border/70">
-        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-1.5">
-          {/* Adjuntar Archivo */}
+      {/* Miniatura flotante de archivo antes de enviar */}
+      {attachedMedia && (
+        <div className="px-3 py-2 bg-danonino-card border-t border-danonino-border flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            {attachedMedia.type === 'image' ? (
+              <img src={attachedMedia.previewUrl} alt="preview" className="w-10 h-10 object-cover rounded-lg" />
+            ) : attachedMedia.type === 'video' ? (
+              <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
+                <VideoIcon className="w-5 h-5 text-danonino-cyan" />
+              </div>
+            ) : (
+              <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
+                <Mic className="w-5 h-5 text-danonino-lavender animate-pulse" />
+              </div>
+            )}
+            <div className="text-xs">
+              <span className="font-semibold text-slate-200 block truncate max-w-[200px]">
+                {attachedMedia.name}
+              </span>
+              <span className="text-[10px] text-danonino-cyan capitalize font-mono">
+                {attachedMedia.type} listo para enviar
+              </span>
+            </div>
+          </div>
           <button
-            type="button"
-            onClick={() => showFeatureNotice('Adjuntar archivo')}
-            className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
-            title="Adjuntar archivo"
+            onClick={() => setAttachedMedia(null)}
+            className="p-1 rounded-full bg-slate-800 text-slate-400 hover:text-white"
           >
-            <Paperclip className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
 
-          {/* Input de Texto */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onFocus={() => setTimeout(() => scrollToBottom('smooth'), 250)}
-            placeholder="Mensaje privado para Danonino..."
-            className="flex-1 bg-danonino-card text-xs text-slate-100 placeholder-slate-500 px-3.5 py-2.5 rounded-2xl border border-danonino-border focus:outline-none focus:border-danonino-cyan transition-colors"
-          />
+      {/* Grabadora de Nota de Voz en Vivo */}
+      {isRecordingAudio ? (
+        <div className="p-3 bg-danonino-bg/95 border-t border-danonino-border/70 flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
+            <span className="text-xs font-mono text-rose-400">
+              Grabando: {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
+            </span>
+          </div>
 
-          {/* Enviar Audio */}
-          <button
-            type="button"
-            onClick={() => showFeatureNotice('Nota de voz')}
-            className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
-            title="Grabar nota de voz"
-          >
-            <Mic className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={cancelRecordingAudio}
+              className="px-3 py-1 rounded-xl bg-danonino-card border border-danonino-border text-slate-400 text-xs hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={stopRecordingAudio}
+              className="px-3 py-1 rounded-xl bg-danonino-cyan text-danonino-bg font-bold text-xs shadow-md"
+            >
+              Listo
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Caja de Entrada de Texto con Acciones */
+        <div className="p-3 bg-danonino-bg/95 border-t border-danonino-border/70">
+          <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-1.5">
+            {/* Adjuntar Foto / Video */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
+              title="Adjuntar foto o video"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
 
-          {/* Botón Enviar */}
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isSending}
-            className="p-2.5 bg-danonino-cyan text-danonino-bg rounded-2xl font-bold hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all flex-shrink-0 shadow-sm"
-            title="Enviar mensaje"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-      </div>
+            {/* Input de Texto */}
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onFocus={() => setTimeout(() => scrollToBottom('smooth'), 250)}
+              placeholder="Mensaje para Danonino..."
+              className="flex-1 bg-danonino-card text-xs text-slate-100 placeholder-slate-500 px-3.5 py-2.5 rounded-2xl border border-danonino-border focus:outline-none focus:border-danonino-cyan transition-colors"
+            />
+
+            {/* Grabar Nota de Voz */}
+            <button
+              type="button"
+              onClick={startRecordingAudio}
+              className="p-2 text-slate-400 hover:text-danonino-cyan transition-colors rounded-xl"
+              title="Grabar nota de voz"
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+
+            {/* Botón Enviar */}
+            <button
+              type="submit"
+              disabled={(!inputText.trim() && !attachedMedia) || isSending}
+              className="p-2.5 bg-danonino-cyan text-danonino-bg rounded-2xl font-bold hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all flex-shrink-0 shadow-sm"
+              title="Enviar mensaje"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
