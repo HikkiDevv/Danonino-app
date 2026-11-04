@@ -225,12 +225,45 @@ export interface OneirosSleepMetrics {
   sleepStartedAt?: string | null;
 }
 
+export interface OneirosDanoninoState {
+  location: string;
+  currentFocus: string;
+  currentThought: string;
+  relationships: Record<string, string>;
+}
+
+export interface OneirosLocation {
+  id: string;
+  name: string;
+  description: string;
+  stability: number;
+}
+
+export interface OneirosDialogueItem {
+  speaker: string;
+  text: string;
+  turn?: number;
+  timestamp?: string;
+}
+
+export interface OneirosLivingSimulationState {
+  isRunning: boolean;
+  intervalMs: number;
+  tickCount: number;
+  lastTickAt: string | null;
+  danoninoState: OneirosDanoninoState;
+  activeDialogue: OneirosDialogueItem[];
+  locations: OneirosLocation[];
+  discoveries: string[];
+}
+
 export interface OneirosObservatoryData {
   ok: boolean;
   hasActiveDream: boolean;
   dream: OneirosDream | null;
   characters: OneirosCharacter[];
   recentEvents: OneirosEvent[];
+  livingSimulation?: OneirosLivingSimulationState;
   sleepState: SleepCycleState;
   sleepMetrics: OneirosSleepMetrics;
 }

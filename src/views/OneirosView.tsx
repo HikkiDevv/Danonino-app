@@ -19,7 +19,10 @@ import {
   Power,
   Zap,
   BedDouble,
-  SunMedium
+  SunMedium,
+  Radio,
+  MessageSquare,
+  MapPin
 } from 'lucide-react';
 import { api } from '../services/api';
 import {
@@ -76,9 +79,41 @@ export const OneirosView: React.FC = () => {
 
   useEffect(() => {
     fetchObservatory();
-    const interval = setInterval(fetchObservatory, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchObservatory, 8000);
+    const unsub = api.subscribeEvents((event) => {
+      if (
+        event.type === 'oneiros_living_step' ||
+        event.type === 'oneiros_dream_stepped' ||
+        event.type === 'oneiros_dream_started' ||
+        event.type === 'oneiros_dream_awakened' ||
+        event.type === 'sleep_state_changed'
+      ) {
+        fetchObservatory();
+      }
+    });
+    return () => {
+      clearInterval(interval);
+      unsub();
+    };
   }, []);
+
+  const handleToggleLivingSimulation = async () => {
+    if (!observatory?.dream) return;
+    const isRunning = Boolean(observatory?.livingSimulation?.isRunning);
+    setIsActing(true);
+    try {
+      if (isRunning) {
+        await api.stopLivingSimulation();
+      } else {
+        await api.startLivingSimulation(observatory.dream.dreamId, 10000);
+      }
+      await fetchObservatory();
+    } catch (err: any) {
+      alert('Error controlando simulación viva: ' + err.message);
+    } finally {
+      setIsActing(false);
+    }
+  };
 
   const handleStartDream = async () => {
     setIsActing(true);
@@ -219,11 +254,11 @@ export const OneirosView: React.FC = () => {
           <div>
             <h1 className="text-base font-semibold text-white tracking-wide flex items-center gap-2">
               PROYECTO ONEIROS
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-danonino-violet/25 text-danonino-lavender border border-danonino-violet/30">
-                2.0
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-danonino-cyan/20 text-danonino-cyan border border-danonino-cyan/40">
+                2.1 Living
               </span>
             </h1>
-            <p className="text-xs text-danonino-muted">Simulación onírica y ciclo autónomo</p>
+            <p className="text-xs text-danonino-muted">Simulación viva autónoma y ciclo de sueño</p>
           </div>
         </div>
 
@@ -442,7 +477,152 @@ export const OneirosView: React.FC = () => {
                   </div>
                 </section>
 
-                {/* C. Estimulación Reactiva y Avance Autónomo */}
+                {/* C1. ONEIROS 2.1 — Simulación Viva Continua (Living Engine) */}
+                <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 shadow-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs uppercase font-mono tracking-wider text-danonino-cyan flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 animate-pulse text-danonino-cyan" />
+                      Living Dream Engine (Autónomo en Vivo)
+                    </h3>
+                    <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                      observatory.livingSimulation?.isRunning
+                        ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50 animate-pulse'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                    }`}>
+                      {observatory.livingSimulation?.isRunning
+                        ? `En Vivo (Ciclo ${Math.round((observatory.livingSimulation.intervalMs || 10000) / 1000)}s • Tick #${observatory.livingSimulation.tickCount})`
+                        : 'Simulación en Pausa'}
+                    </span>
+                  </div>
+
+                  {/* Danonino como Protagonista Independiente */}
+                  <div className="bg-black/35 border border-danonino-border/60 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-danonino-cyan animate-ping" />
+                        <span className="text-xs font-bold text-white">Danonino (Protagonista Onírico)</span>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-danonino-border/50 text-danonino-lavender flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-danonino-cyan" />
+                        {observatory.livingSimulation?.danoninoState?.location || 'Atrio Central'}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-danonino-muted space-y-1">
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-[10px] font-mono text-danonino-cyan uppercase shrink-0">Foco actual:</span>
+                        <span className="text-white">
+                          {observatory.livingSimulation?.danoninoState?.currentFocus || 'Explorando arquitectura onírica'}
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-[10px] font-mono text-danonino-lavender uppercase shrink-0">Pensamiento:</span>
+                        <span className="italic text-danonino-text">
+                          "{observatory.livingSimulation?.danoninoState?.currentThought || 'Observando la congruencia de los muros...'}"
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Vínculos y Relaciones con Entidades */}
+                    {observatory.livingSimulation?.danoninoState?.relationships && Object.keys(observatory.livingSimulation.danoninoState.relationships).length > 0 && (
+                      <div className="pt-2 border-t border-danonino-border/30">
+                        <span className="text-[10px] uppercase font-mono text-danonino-muted block mb-1">Vínculos con Entidades:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(observatory.livingSimulation.danoninoState.relationships).map(([ent, val]) => (
+                            <span key={ent} className="text-[10px] px-2 py-0.5 rounded bg-black/40 border border-danonino-border/40 text-danonino-cyan font-mono">
+                              {ent}: {String(val)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Diálogos Autónomos Emergentes */}
+                  {observatory.livingSimulation?.activeDialogue && observatory.livingSimulation.activeDialogue.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs text-danonino-lavender font-mono">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Diálogo Autónomo en Vivo:
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto bg-black/30 p-2.5 rounded-xl border border-danonino-border/40">
+                        {observatory.livingSimulation.activeDialogue.map((d, i) => (
+                          <div
+                            key={i}
+                            className={`p-2 rounded-lg text-xs leading-relaxed ${
+                              d.speaker === 'Danonino'
+                                ? 'bg-danonino-cyan/15 border border-danonino-cyan/30 text-white ml-2'
+                                : 'bg-danonino-violet/15 border border-danonino-violet/30 text-danonino-lavender mr-2'
+                            }`}
+                          >
+                            <span className="font-bold font-mono text-[10px] uppercase block mb-0.5 text-danonino-muted">
+                              {d.speaker}
+                            </span>
+                            {d.text}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Topología y Descubrimientos */}
+                  {observatory.livingSimulation?.locations && observatory.livingSimulation.locations.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] uppercase font-mono text-danonino-muted block">Topología Espacial del Sueño:</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {observatory.livingSimulation.locations.map(loc => {
+                          const isHere = observatory.livingSimulation?.danoninoState?.location === loc.name;
+                          return (
+                            <div
+                              key={loc.id}
+                              className={`p-2 rounded-lg border text-xs ${
+                                isHere
+                                  ? 'bg-danonino-cyan/15 border-danonino-cyan/60 text-white'
+                                  : 'bg-black/25 border-danonino-border/30 text-danonino-muted'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-semibold">
+                                <span className="flex items-center gap-1">
+                                  {isHere && <MapPin className="w-3 h-3 text-danonino-cyan" />}
+                                  {loc.name}
+                                </span>
+                                <span className="text-[9px] font-mono text-danonino-cyan">
+                                  {Math.round((loc.stability || 1) * 100)}% est.
+                                </span>
+                              </div>
+                              <p className="text-[10px] mt-0.5 line-clamp-1 opacity-80">{loc.description}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botón de Toggle Simulación Continua */}
+                  <div className="pt-2 flex items-center justify-between">
+                    <button
+                      onClick={handleToggleLivingSimulation}
+                      disabled={isActing}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
+                        observatory.livingSimulation?.isRunning
+                          ? 'bg-amber-950/60 hover:bg-amber-900/70 border border-amber-500/50 text-amber-200'
+                          : 'bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-500/50 text-emerald-200'
+                      }`}
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      {observatory.livingSimulation?.isRunning
+                        ? 'Pausar Simulación Continua'
+                        : 'Activar Simulación Continua (10s)'}
+                    </button>
+                    {observatory.livingSimulation?.discoveries && observatory.livingSimulation.discoveries.length > 0 && (
+                      <span className="text-[10px] font-mono text-danonino-muted">
+                        {observatory.livingSimulation.discoveries.length} anomalías descubiertas
+                      </span>
+                    )}
+                  </div>
+                </section>
+
+                {/* C2. Estimulación Reactiva y Avance Manual */}
                 <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 shadow-lg space-y-3">
                   <h3 className="text-xs uppercase font-mono tracking-wider text-danonino-muted flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-danonino-cyan" />

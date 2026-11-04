@@ -479,6 +479,34 @@ export const api = {
     return res.json();
   },
 
+  async startLivingSimulation(dreamId?: string, intervalMs: number = 10000): Promise<{ ok: boolean; living: any }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/living/start`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ dreamId, intervalMs })
+    });
+    if (!res.ok) throw new Error(`Error iniciando simulación viva: ${res.statusText}`);
+    return res.json();
+  },
+
+  async stopLivingSimulation(): Promise<{ ok: boolean; running: boolean }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/living/stop`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    if (!res.ok) throw new Error(`Error deteniendo simulación viva: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getMemoryAudit(limit: number = 50): Promise<{ ok: boolean; count: number; logs: any[] }> {
+    const res = await fetch(`${getBaseApiUrl()}/memories/audit?limit=${limit}`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error consultando auditoría de memoria: ${res.statusText}`);
+    return res.json();
+  },
+
   // ==========================================
   // EVENTOS SSE PRIVADOS POR USUARIO
   // ==========================================
