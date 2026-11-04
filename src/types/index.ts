@@ -214,10 +214,23 @@ export interface OneirosDream {
   awakenedAt?: string;
 }
 
+export type SleepCycleState = 'AWAKE' | 'DROWSY' | 'SLEEPING' | 'LUCID_DREAMING' | 'WAKING';
+
+export interface OneirosSleepMetrics {
+  timeAsleepSeconds: number;
+  minutesInactive: number;
+  autoSleepEnabled: boolean;
+  inactivityThresholdMins: number;
+  lastAwakenedAt?: string | null;
+  sleepStartedAt?: string | null;
+}
+
 export interface OneirosObservatoryData {
   ok: boolean;
   hasActiveDream: boolean;
   dream: OneirosDream | null;
   characters: OneirosCharacter[];
   recentEvents: OneirosEvent[];
+  sleepState: SleepCycleState;
+  sleepMetrics: OneirosSleepMetrics;
 }

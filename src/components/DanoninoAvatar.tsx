@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export type AvatarState =
   | 'idle'
@@ -7,6 +7,9 @@ export type AvatarState =
   | 'speaking'
   | 'curious'
   | 'sleeping'
+  | 'drowsy'
+  | 'lucid_dreaming'
+  | 'waking'
   | 'error';
 
 interface DanoninoAvatarProps {
@@ -28,7 +31,7 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
 }) => {
   // Normalizar el estado hacia uno de los estados oficiales
   const normalizedState: AvatarState = (() => {
-    switch (mode) {
+    switch (String(mode || '').toLowerCase()) {
       case 'listening':
         return 'listening';
       case 'thinking':
@@ -38,10 +41,20 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
         return 'speaking';
       case 'curious':
         return 'curious';
+      case 'drowsy':
+      case 'somnoliento':
+        return 'drowsy';
       case 'sleeping':
       case 'dreaming':
       case 'descanso':
         return 'sleeping';
+      case 'lucid_dreaming':
+      case 'lucid':
+      case 'lucido':
+        return 'lucid_dreaming';
+      case 'waking':
+      case 'despertando':
+        return 'waking';
       case 'error':
         return 'error';
       default:
@@ -49,13 +62,13 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
     }
   })();
 
-  // 1. Estado de parpadeo natural aleatorio (cada 3.5 a 6.5 segundos)
+  // 1. Estado de parpadeo natural aleatorio
   const [isBlinking, setIsBlinking] = useState(false);
-  // 2. Micro-sacadas oculares sutiles (posición X/Y de las pupilas)
+  // 2. Micro-sacadas oculares sutiles
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    if (normalizedState === 'sleeping') {
+    if (normalizedState === 'sleeping' || normalizedState === 'drowsy') {
       setIsBlinking(false);
       return;
     }
@@ -68,7 +81,7 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
         setTimeout(() => {
           setIsBlinking(false);
           scheduleNextBlink();
-        }, 160); // Duración de parpadeo biológico ~160ms
+        }, 160);
       }, delay);
     };
 
@@ -76,11 +89,11 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
     return () => clearTimeout(blinkTimeout);
   }, [normalizedState]);
 
-  // Micro-movimientos oculares aleatorios cuando está en idle o curious
+  // Micro-movimientos oculares aleatorios
   useEffect(() => {
-    if (normalizedState !== 'idle' && normalizedState !== 'curious') {
+    if (normalizedState !== 'idle' && normalizedState !== 'curious' && normalizedState !== 'lucid_dreaming') {
       if (normalizedState === 'thinking') {
-        setEyeOffset({ x: 1, y: -2 }); // Mirando ligeramente arriba
+        setEyeOffset({ x: 1, y: -2 });
       } else {
         setEyeOffset({ x: 0, y: 0 });
       }
@@ -111,7 +124,6 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
     hero: 'w-56 h-56'
   };
 
-  // Nivel de reactividad a la voz / audio normalizado entre 0 y 1
   const clampedLevel = Math.max(0, Math.min(1, audioLevel));
   const audioPulseScale = 1 + clampedLevel * 0.18;
   const audioRingOpacity = 0.2 + clampedLevel * 0.6;
@@ -147,12 +159,33 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
           opacity: 0.4,
           scale: 1.04
         };
+      case 'drowsy':
+        return {
+          bg: 'bg-danonino-violet/30',
+          blur: 'blur-lg',
+          opacity: 0.25,
+          scale: 0.99
+        };
       case 'sleeping':
         return {
-          bg: 'bg-danonino-violet/20',
-          blur: 'blur-lg',
-          opacity: 0.2,
-          scale: 0.98
+          bg: 'bg-danonino-violet/15',
+          blur: 'blur-md',
+          opacity: 0.18,
+          scale: 0.97
+        };
+      case 'lucid_dreaming':
+        return {
+          bg: 'bg-gradient-to-tr from-danonino-cyan via-danonino-violet to-fuchsia-500',
+          blur: 'blur-2xl',
+          opacity: 0.65,
+          scale: 1.12
+        };
+      case 'waking':
+        return {
+          bg: 'bg-danonino-cyan/50',
+          blur: 'blur-xl',
+          opacity: 0.4,
+          scale: 1.02
         };
       case 'error':
         return {
@@ -173,6 +206,9 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
   })();
 
   const isSleeping = normalizedState === 'sleeping';
+  const isDrowsy = normalizedState === 'drowsy';
+  const isLucidDreaming = normalizedState === 'lucid_dreaming';
+  const isWaking = normalizedState === 'waking';
   const isCurious = normalizedState === 'curious';
   const isThinking = normalizedState === 'thinking';
   const isListening = normalizedState === 'listening';
@@ -195,7 +231,7 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
         style={{ opacity: haloStyles.opacity }}
       />
 
-      {/* 2. Anillo orbital cinético (acelera sutilmente en thinking o listening) */}
+      {/* 2. Anillo orbital cinético */}
       <div
         className={`absolute inset-[-4px] rounded-full border border-dashed transition-all pointer-events-none ${
           isListening
@@ -204,29 +240,43 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
             ? 'border-danonino-violet/80 animate-spin'
             : isSpeaking
             ? 'border-danonino-cyan/50 animate-pulse'
+            : isLucidDreaming
+            ? 'border-danonino-cyan/80 animate-spin shadow-[0_0_10px_#06b6d4]'
             : isSleeping
-            ? 'border-danonino-border/30'
+            ? 'border-danonino-border/20'
+            : isDrowsy
+            ? 'border-danonino-violet/30'
             : isError
             ? 'border-amber-400/40'
             : 'border-danonino-violet/35'
         }`}
         style={{
-          animationDuration: isThinking ? '2.5s' : isListening ? '6s' : '12s'
+          animationDuration: isThinking ? '2.5s' : isListening ? '6s' : isLucidDreaming ? '4s' : '12s'
         }}
       />
 
-      {/* 3. Esfera central bio-digital (núcleo oscuro con degradado cósmico) */}
-      <div className="relative w-full h-full rounded-full overflow-hidden p-[2px] bg-gradient-to-tr from-danonino-violet via-danonino-blue to-danonino-cyan shadow-2xl">
+      {/* 3. Esfera central bio-digital */}
+      <div className={`relative w-full h-full rounded-full overflow-hidden p-[2px] shadow-2xl transition-all duration-300 ${
+        isLucidDreaming
+          ? 'bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-indigo-500'
+          : isDrowsy || isSleeping
+          ? 'bg-gradient-to-tr from-[#1a1c2e] via-[#0f111f] to-[#0a0c16]'
+          : 'bg-gradient-to-tr from-danonino-violet via-danonino-blue to-danonino-cyan'
+      }`}>
         <div className="w-full h-full rounded-full bg-gradient-to-b from-[#131b2e] via-[#090d18] to-[#04060c] flex items-center justify-center relative overflow-hidden">
-          {/* Ondas internas de resonancia reactiva */}
+          {/* Ondas internas de resonancia */}
           <div
             className={`absolute w-3/4 h-3/4 rounded-full transition-all duration-200 pointer-events-none ${
               isListening
                 ? 'bg-danonino-cyan/20 animate-ping'
                 : isSpeaking
                 ? 'bg-danonino-cyan/25'
+                : isLucidDreaming
+                ? 'bg-danonino-cyan/20 animate-pulse'
                 : isThinking
                 ? 'bg-danonino-violet/20 animate-pulse'
+                : isSleeping
+                ? 'bg-transparent'
                 : 'bg-danonino-violet/10'
             }`}
             style={{
@@ -234,7 +284,7 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
             }}
           />
 
-          {/* Ojos Luminosos Expresivos */}
+          {/* Ojos Luminosos Expresivos con soporte para ciclo de sueño */}
           <div
             className="relative z-10 flex items-center justify-center gap-3.5 transition-transform duration-200"
             style={{
@@ -243,9 +293,15 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
           >
             {/* OJO IZQUIERDO */}
             <div
-              className={`rounded-full transition-all duration-150 flex items-center justify-center ${
+              className={`rounded-full transition-all duration-200 flex items-center justify-center ${
                 isSleeping
-                  ? 'w-4 h-1 bg-danonino-lavender/50 rounded-full'
+                  ? 'w-4 h-0.5 bg-danonino-lavender/40 rounded-full'
+                  : isDrowsy
+                  ? 'w-3.5 h-1.5 bg-danonino-lavender/60 rounded-full'
+                  : isLucidDreaming
+                  ? 'w-4 h-4.5 bg-gradient-to-tr from-cyan-300 to-fuchsia-400 shadow-[0_0_12px_#06b6d4] animate-pulse'
+                  : isWaking
+                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#06b6d4]'
                   : isBlinking
                   ? 'w-3.5 h-0.5 bg-danonino-lavender rounded-full'
                   : isListening
@@ -261,16 +317,22 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
                   : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
               }`}
             >
-              {!isSleeping && !isBlinking && (
+              {!isSleeping && !isDrowsy && !isBlinking && (
                 <div className="w-1 h-1 bg-white rounded-full self-start ml-0.5 mt-0.5 opacity-90" />
               )}
             </div>
 
             {/* OJO DERECHO */}
             <div
-              className={`rounded-full transition-all duration-150 flex items-center justify-center ${
+              className={`rounded-full transition-all duration-200 flex items-center justify-center ${
                 isSleeping
-                  ? 'w-4 h-1 bg-danonino-lavender/50 rounded-full'
+                  ? 'w-4 h-0.5 bg-danonino-lavender/40 rounded-full'
+                  : isDrowsy
+                  ? 'w-3.5 h-1.5 bg-danonino-lavender/60 rounded-full'
+                  : isLucidDreaming
+                  ? 'w-4 h-4.5 bg-gradient-to-tr from-cyan-300 to-fuchsia-400 shadow-[0_0_12px_#06b6d4] animate-pulse'
+                  : isWaking
+                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#06b6d4]'
                   : isBlinking
                   ? 'w-3.5 h-0.5 bg-danonino-lavender rounded-full'
                   : isListening
@@ -286,13 +348,13 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
                   : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
               }`}
             >
-              {!isSleeping && !isBlinking && (
+              {!isSleeping && !isDrowsy && !isBlinking && (
                 <div className="w-1 h-1 bg-white rounded-full self-start ml-0.5 mt-0.5 opacity-90" />
               )}
             </div>
           </div>
 
-          {/* Micro-onda de resonancia vocal en la parte inferior */}
+          {/* Micro-onda de resonancia vocal en speaking */}
           {isSpeaking && (
             <div
               className="absolute bottom-3.5 h-1 bg-danonino-cyan/80 rounded-full transition-all duration-100"
@@ -305,7 +367,7 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
         </div>
       </div>
 
-      {/* 4. Badge indicador de estado opcional */}
+      {/* 4. Badge indicador de estado */}
       {showStatusBadge && (
         <span
           className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-danonino-bg shadow-sm transition-colors ${
@@ -315,8 +377,14 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
               ? 'bg-danonino-violet animate-ping'
               : isSpeaking
               ? 'bg-danonino-cyan'
+              : isLucidDreaming
+              ? 'bg-fuchsia-400 animate-ping'
+              : isDrowsy
+              ? 'bg-indigo-400'
               : isSleeping
               ? 'bg-slate-600'
+              : isWaking
+              ? 'bg-danonino-cyan'
               : isError
               ? 'bg-amber-500'
               : 'bg-danonino-success'

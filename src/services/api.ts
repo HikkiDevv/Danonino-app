@@ -441,13 +441,33 @@ export const api = {
     return res.json();
   },
 
-  async wakeOneiros(dreamId?: string): Promise<{ ok: boolean; dreamId: string; state: string; awakenedAt: string; narrativeJournal: string }> {
+  async wakeOneiros(dreamId?: string, reason = 'manual_app'): Promise<{ ok: boolean; dreamId: string; state: string; awakenedAt: string; narrativeJournal: string }> {
     const res = await fetch(`${getBaseApiUrl()}/oneiros/wake`, {
       method: 'POST',
       headers: buildHeaders(),
-      body: JSON.stringify({ dreamId })
+      body: JSON.stringify({ dreamId, reason })
     });
     if (!res.ok) throw new Error(`Error al despertar Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async toggleAutoSleep(autoSleepEnabled: boolean, inactivityThresholdMins?: number): Promise<{ ok: boolean; sleep: any }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/sleep/toggle`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ autoSleepEnabled, inactivityThresholdMins })
+    });
+    if (!res.ok) throw new Error(`Error configurando sueño autónomo: ${res.statusText}`);
+    return res.json();
+  },
+
+  async forceSleepNow(mode: string = 'lucid'): Promise<{ ok: boolean; state: string; dream: OneirosDream }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/sleep/now`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ mode })
+    });
+    if (!res.ok) throw new Error(`Error iniciando sueño forzado: ${res.statusText}`);
     return res.json();
   },
 
