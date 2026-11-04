@@ -101,3 +101,43 @@ export interface AutonomyData {
   suenosRecientes: DreamJournalEntry[];
   iniciativas: any[];
 }
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  preferences?: Record<string, any>;
+  createdAt?: string;
+  whatsappVinculos?: Array<{
+    whatsapp_jid: string;
+    verificado: number;
+    creado_en: string;
+    verificado_en?: string;
+  }>;
+}
+
+export interface Conversation {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  lastMessageAt?: string;
+}
+
+export interface AuthResponse {
+  ok: boolean;
+  user: UserProfile;
+  token: string;
+  expiresAt: string;
+  initialConversationId?: string;
+  error?: string;
+}
+
+export interface WhatsAppLinkData {
+  ok: boolean;
+  code: string;
+  expiresInMinutes: number;
+  instrucciones: string;
+}

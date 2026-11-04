@@ -7,6 +7,7 @@ export interface ScreenCapturePluginInterface {
   startCapture(): Promise<{ success: boolean }>;
   getFrame(): Promise<{ frame: string | null }>;
   stopCapture(): Promise<{ stopped: boolean }>;
+  requestOverlayPermission(): Promise<{ requested: boolean; granted?: boolean }>;
 }
 
 export const NativeScreenCapture = registerPlugin<ScreenCapturePluginInterface>('ScreenCapture');
@@ -178,6 +179,7 @@ export class ScreenShareManager {
     // Si estamos en Android nativo (Capacitor), usar el plugin nativo de MediaProjection
     if (Capacitor.isNativePlatform()) {
       try {
+        await NativeScreenCapture.requestOverlayPermission().catch(() => {});
         const res = await NativeScreenCapture.startCapture();
         if (res && res.success) {
           this.isNative = true;

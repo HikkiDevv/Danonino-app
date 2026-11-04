@@ -3,6 +3,7 @@ package com.danonino.app;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -18,8 +19,12 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.util.Base64;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
 
 import androidx.core.app.NotificationCompat;
@@ -37,6 +42,11 @@ public class ScreenCaptureService extends Service {
     private int screenWidth = 720;
     private int screenHeight = 1280;
     private int screenDensity = DisplayMetrics.DENSITY_DEFAULT;
+
+    // Mini Danonino Burbuja Flotante en segundo plano tipo Discord
+    private WindowManager windowManager;
+    private DanoninoBubbleView bubbleView;
+    private WindowManager.LayoutParams bubbleParams;
 
     private final IBinder binder = new LocalBinder();
 
@@ -73,10 +83,20 @@ public class ScreenCaptureService extends Service {
     }
 
     public void startProjection(int resultCode, Intent resultData) {
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                notificationIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+        );
+
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Danonino Live")
-                .setContentText("Compartiendo pantalla con Danonino en tiempo real")
+                .setContentText("Transmitiendo pantalla y asistiendo en vivo")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
+                .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .build();
@@ -92,7 +112,6 @@ public class ScreenCaptureService extends Service {
             DisplayMetrics metrics = new DisplayMetrics();
             wm.getDefaultDisplay().getRealMetrics(metrics);
             screenDensity = metrics.densityDpi;
-            // Escalar a máximo 720p para balancear nitidez y rendimiento
             int rawW = metrics.widthPixels;
             int rawH = metrics.heightPixels;
             if (rawW > 720) {
@@ -122,6 +141,92 @@ public class ScreenCaptureService extends Service {
                 );
             }
         }
+
+        // Mostrar Mini Burbuja Flotante tipo Discord
+        showFloatingBubble();
+    }
+
+    private void showFloatingBubble() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            return;
+        }
+
+        try {
+            windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+            if (windowManager == null || bubbleView != null) return;
+
+            bubbleView = new DanoninoBubbleView(this);
+
+            int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+
+            bubbleParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    layoutFlag,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT
+            );
+            bubbleParams.gravity = Gravity.TOP | Gravity.START;
+            bubbleParams.x = 40;
+            bubbleParams.y = 250;
+
+            // Arrastre táctil y clic para abrir la app
+            bubbleView.setOnTouchListener(new View.OnTouchListener() {
+                private int initialX, initialY;
+                private float initialTouchX, initialTouchY;
+                private long touchStartTime;
+
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = bubbleParams.x;
+                            initialY = bubbleParams.y;
+                            initialTouchX = event.getRawX();
+                            initialTouchY = event.getRawY();
+                            touchStartTime = System.currentTimeMillis();
+                            return true;
+
+                        case MotionEvent.ACTION_MOVE:
+                            bubbleParams.x = initialX + (int) (event.getRawX() - initialTouchX);
+                            bubbleParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                            if (windowManager != null && bubbleView != null) {
+                                windowManager.updateViewLayout(bubbleView, bubbleParams);
+                            }
+                            return true;
+
+                        case MotionEvent.ACTION_UP:
+                            long clickDuration = System.currentTimeMillis() - touchStartTime;
+                            float deltaX = Math.abs(event.getRawX() - initialTouchX);
+                            float deltaY = Math.abs(event.getRawY() - initialTouchY);
+
+                            // Si fue un toque rápido sin arrastrar -> Abrir Danonino
+                            if (clickDuration < 250 && deltaX < 15 && deltaY < 15) {
+                                Intent openIntent = new Intent(ScreenCaptureService.this, MainActivity.class);
+                                openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                                startActivity(openIntent);
+                            }
+                            return true;
+                    }
+                    return false;
+                }
+            });
+
+            windowManager.addView(bubbleView, bubbleParams);
+        } catch (Exception e) {
+            // Ignorar si falta permiso de superposición
+        }
+    }
+
+    private void removeFloatingBubble() {
+        if (windowManager != null && bubbleView != null) {
+            try {
+                windowManager.removeView(bubbleView);
+            } catch (Exception ignored) {}
+            bubbleView = null;
+        }
     }
 
     public String captureFrameBase64() {
@@ -145,7 +250,6 @@ public class ScreenCaptureService extends Service {
             );
             bitmap.copyPixelsFromBuffer(buffer);
 
-            // Recortar si había rowPadding
             Bitmap cleanBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight);
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -166,6 +270,7 @@ public class ScreenCaptureService extends Service {
     }
 
     public void stopProjection() {
+        removeFloatingBubble();
         if (virtualDisplay != null) {
             virtualDisplay.release();
             virtualDisplay = null;

@@ -39,6 +39,28 @@ public class ScreenCapturePlugin extends Plugin {
     };
 
     @PluginMethod
+    public void requestOverlayPermission(PluginCall call) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (!android.provider.Settings.canDrawOverlays(getContext())) {
+                Intent intent = new Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + getContext().getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                JSObject ret = new JSObject();
+                ret.put("requested", true);
+                call.resolve(ret);
+                return;
+            }
+        }
+        JSObject ret = new JSObject();
+        ret.put("requested", false);
+        ret.put("granted", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void startCapture(PluginCall call) {
         MediaProjectionManager mpm = (MediaProjectionManager) getContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         if (mpm == null) {

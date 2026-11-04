@@ -4,55 +4,232 @@ import {
   HabitatState,
   MemoryItem,
   EvolutionData,
-  AutonomyData
+  AutonomyData,
+  UserProfile,
+  Conversation,
+  AuthResponse,
+  WhatsAppLinkData
 } from '../types';
 
 // URL pública mundial permanente vía Cloudflare Tunnel para que cualquier persona con el APK pueda conectarse
 export const DEFAULT_PUBLIC_API_URL = 'https://administrator-opinions-duty-naval.trycloudflare.com/api';
-const isNative = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform?.();
 
 export const getBaseApiUrl = (): string => {
   const custom = localStorage.getItem('danonino_api_url');
   if (custom) return custom.replace(/\/+$/, '');
-  // Por defecto usar la URL pública del túnel para soporte multiusuario universal
   return DEFAULT_PUBLIC_API_URL;
 };
 
-export const getAuthToken = (): string => {
-  return localStorage.getItem('danonino_api_token') || 'danonino-app-secret-token';
+export const getUserToken = (): string | null => {
+  return localStorage.getItem('danonino_user_token');
+};
+
+export const setUserToken = (token: string): void => {
+  localStorage.setItem('danonino_user_token', token);
+};
+
+export const getCurrentUser = (): UserProfile | null => {
+  const raw = localStorage.getItem('danonino_user_profile');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+export const setCurrentUser = (user: UserProfile | null): void => {
+  if (user) {
+    localStorage.setItem('danonino_user_profile', JSON.stringify(user));
+  } else {
+    localStorage.removeItem('danonino_user_profile');
+  }
+};
+
+export const clearAuthSession = (): void => {
+  localStorage.removeItem('danonino_user_token');
+  localStorage.removeItem('danonino_user_profile');
+  localStorage.removeItem('danonino_active_conv');
 };
 
 const buildHeaders = (): HeadersInit => {
-  return {
-    'Content-Type': 'application/json',
-    'X-Danonino-Token': getAuthToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
   };
+  const token = getUserToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Danonino-User-Token'] = token;
+  }
+  return headers;
 };
 
 export const api = {
-  async getStatus(chatId = 'app_user'): Promise<AgentStatus> {
-    const res = await fetch(`${getBaseApiUrl()}/status?chatId=${encodeURIComponent(chatId)}`, {
+  // ==========================================
+  // AUTENTICACIÓN Y PERFIL
+  // ==========================================
+
+  async register(username: string, password: string, displayName?: string): Promise<AuthResponse> {
+    const res = await fetch(`${getBaseApiUrl()}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, displayName })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'Error en registro de usuario');
+    }
+    setUserToken(data.token);
+    setCurrentUser(data.user);
+    if (data.initialConversationId) {
+      localStorage.setItem('danonino_active_conv', data.initialConversationId);
+    }
+    return data;
+  },
+
+  async login(username: string, password: string): Promise<AuthResponse> {
+    const res = await fetch(`${getBaseApiUrl()}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'Credenciales incorrectas');
+    }
+    setUserToken(data.token);
+    setCurrentUser(data.user);
+    return data;
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await fetch(`${getBaseApiUrl()}/auth/logout`, {
+        method: 'POST',
+        headers: buildHeaders()
+      });
+    } catch (_) {}
+    clearAuthSession();
+  },
+
+  async getMe(): Promise<UserProfile> {
+    const res = await fetch(`${getBaseApiUrl()}/auth/me`, {
       headers: buildHeaders()
     });
-    if (!res.ok) throw new Error(`Error en API status: ${res.statusText}`);
+    if (!res.ok) {
+      if (res.status === 401) clearAuthSession();
+      throw new Error(`Error obteniendo perfil: ${res.statusText}`);
+    }
+    const data = await res.json();
+    setCurrentUser(data.user);
+    return data.user;
+  },
+
+  async updateProfile(displayName: string, preferences?: Record<string, any>): Promise<UserProfile> {
+    const res = await fetch(`${getBaseApiUrl()}/auth/profile`, {
+      method: 'PUT',
+      headers: buildHeaders(),
+      body: JSON.stringify({ displayName, preferences })
+    });
+    if (!res.ok) throw new Error('Error actualizando perfil');
+    const data = await res.json();
+    setCurrentUser(data.user);
+    return data.user;
+  },
+
+  async requestWhatsAppLink(): Promise<WhatsAppLinkData> {
+    const res = await fetch(`${getBaseApiUrl()}/auth/link-whatsapp`, {
+      method: 'POST',
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error('Error solicitando código de vinculación');
     return res.json();
   },
 
-  async sendChatMessage(message: string, sender = 'Dan', chatId = 'app_user'): Promise<{ ok: boolean; reply: string; timestamp: string }> {
+  // ==========================================
+  // CONVERSACIONES Y MENSAJES AISLADOS
+  // ==========================================
+
+  async getConversations(): Promise<Conversation[]> {
+    const res = await fetch(`${getBaseApiUrl()}/conversations`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) {
+      if (res.status === 401) clearAuthSession();
+      throw new Error(`Error cargando conversaciones: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return data.conversations || [];
+  },
+
+  async createConversation(title: string = 'Nueva Conversación'): Promise<Conversation> {
+    const res = await fetch(`${getBaseApiUrl()}/conversations`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ title })
+    });
+    if (!res.ok) throw new Error('Error creando conversación');
+    const data = await res.json();
+    return data.conversation;
+  },
+
+  async getConversationMessages(conversationId: string, limit: number = 100): Promise<ChatMessage[]> {
+    const res = await fetch(`${getBaseApiUrl()}/conversations/${encodeURIComponent(conversationId)}/messages?limit=${limit}`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) {
+      if (res.status === 401) clearAuthSession();
+      throw new Error(`Error cargando mensajes: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return data.messages || [];
+  },
+
+  async deleteConversation(conversationId: string): Promise<boolean> {
+    const res = await fetch(`${getBaseApiUrl()}/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error('Error eliminando conversación');
+    return true;
+  },
+
+  async sendChatMessage(message: string, conversationId?: string): Promise<{ ok: boolean; reply: string; timestamp: string; messageId: string; conversationId: string }> {
     const res = await fetch(`${getBaseApiUrl()}/chat`, {
       method: 'POST',
       headers: buildHeaders(),
-      body: JSON.stringify({ message, sender, chatId })
+      body: JSON.stringify({ message, conversationId })
     });
-    if (!res.ok) throw new Error(`Error enviando mensaje: ${res.statusText}`);
+    if (!res.ok) {
+      if (res.status === 401) clearAuthSession();
+      throw new Error(`Error enviando mensaje: ${res.statusText}`);
+    }
     return res.json();
   },
 
-  async getChatHistory(chatId = 'app_user', limit = 50): Promise<{ ok: boolean; count: number; messages: ChatMessage[] }> {
-    const res = await fetch(`${getBaseApiUrl()}/chat/history?chatId=${encodeURIComponent(chatId)}&limit=${limit}`, {
+  async getChatHistory(conversationId?: string, limit = 50): Promise<{ ok: boolean; count: number; messages: ChatMessage[]; conversationId?: string }> {
+    const url = conversationId
+      ? `${getBaseApiUrl()}/chat/history?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`
+      : `${getBaseApiUrl()}/chat/history?limit=${limit}`;
+    const res = await fetch(url, {
       headers: buildHeaders()
     });
-    if (!res.ok) throw new Error(`Error obteniendo historial: ${res.statusText}`);
+    if (!res.ok) {
+      if (res.status === 401) clearAuthSession();
+      throw new Error(`Error obteniendo historial: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // ==========================================
+  // ESTADO, HABITAT, RECUERDOS Y ACTIVIDAD
+  // ==========================================
+
+  async getStatus(): Promise<AgentStatus> {
+    const res = await fetch(`${getBaseApiUrl()}/status`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error en API status: ${res.statusText}`);
     return res.json();
   },
 
@@ -102,6 +279,10 @@ export const api = {
     return res.json();
   },
 
+  // ==========================================
+  // DANONINO LIVE AISLADO
+  // ==========================================
+
   async sendLiveInteraction(
     message: string,
     imageBase64?: string,
@@ -129,9 +310,7 @@ export const api = {
         imageBase64,
         audioBase64,
         streamType,
-        sessionId,
-        sender: 'Dan',
-        chatId: 'app_user'
+        sessionId
       })
     });
     if (!res.ok) throw new Error(`Error en Danonino Live: ${res.statusText}`);
@@ -159,8 +338,15 @@ export const api = {
     return res.json();
   },
 
+  // ==========================================
+  // EVENTOS SSE PRIVADOS POR USUARIO
+  // ==========================================
+
   subscribeEvents(onEvent: (event: { type: string; payload?: any; timestamp: string }) => void): () => void {
-    const sseUrl = `${getBaseApiUrl()}/events?token=${encodeURIComponent(getAuthToken())}`;
+    const token = getUserToken();
+    if (!token) return () => {};
+
+    const sseUrl = `${getBaseApiUrl()}/events?user_token=${encodeURIComponent(token)}`;
     const eventSource = new EventSource(sseUrl);
 
     eventSource.onmessage = (e) => {
