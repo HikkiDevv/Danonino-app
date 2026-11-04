@@ -79,7 +79,7 @@ export const OneirosView: React.FC = () => {
 
   useEffect(() => {
     fetchObservatory();
-    const interval = setInterval(fetchObservatory, 8000);
+    const interval = setInterval(fetchObservatory, 3000);
     const unsub = api.subscribeEvents((event) => {
       if (
         event.type === 'oneiros_living_step' ||
@@ -622,39 +622,49 @@ export const OneirosView: React.FC = () => {
                   </div>
                 </section>
 
-                {/* C2. Estimulación Reactiva y Avance Manual */}
-                <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 shadow-lg space-y-3">
-                  <h3 className="text-xs uppercase font-mono tracking-wider text-danonino-muted flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-danonino-cyan" />
-                    Estimulación Reactiva (Qwen / LLM)
-                  </h3>
+                {/* C2. Intervención Lúcida Externa (Opcional - Simulación 100% Autónoma) */}
+                <section className="bg-danonino-card/70 border border-danonino-border/60 rounded-2xl p-4 space-y-2.5 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase font-mono tracking-wider text-danonino-muted flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-danonino-cyan" />
+                      Intervención Lúcida Externa (Opcional)
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Auto-evolución continua activa
+                    </span>
+                  </div>
 
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={stepAction}
                       onChange={(e) => setStepAction(e.target.value)}
-                      placeholder="Introduce un estímulo (ej. «Cuestiono la gravedad», «Abro la puerta oculta»)..."
+                      placeholder="Inyectar estímulo al sueño (ej. «Cuestiono la gravedad», «Abro la puerta oculta»)..."
                       className="flex-1 bg-black/40 border border-danonino-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-danonino-cyan"
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleStepDream();
+                        if (e.key === 'Enter' && stepAction.trim()) handleStepDream();
                       }}
                     />
                     <button
                       onClick={handleStepDream}
-                      disabled={isActing}
-                      className="px-3.5 py-2 rounded-xl bg-danonino-cyan hover:bg-danonino-cyan/80 text-danonino-bg font-semibold text-xs flex items-center gap-1.5 transition shadow"
+                      disabled={isActing || !stepAction.trim()}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow ${
+                        stepAction.trim()
+                          ? 'bg-danonino-cyan hover:bg-danonino-cyan/80 text-danonino-bg'
+                          : 'bg-danonino-border/40 text-danonino-muted cursor-not-allowed opacity-50'
+                      }`}
                     >
                       {isActing ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <Zap className="w-3.5 h-3.5" />
                       )}
-                      {stepAction.trim() ? 'Estimular' : 'Avanzar'}
+                      Inyectar Estímulo
                     </button>
                   </div>
-                  <p className="text-[11px] text-danonino-muted">
-                    Presionar «Avanzar» sin texto permite que los personajes actúen con total autonomía dentro y fuera de escena.
+                  <p className="text-[11px] text-danonino-muted leading-relaxed">
+                    La simulación onírica, los personajes y Danonino actúan, investigan y conversan de forma 100% autónoma en tiempo real. No necesitas pulsar ningún botón para que el sueño continúe.
                   </p>
                 </section>
 
