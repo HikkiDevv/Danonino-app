@@ -1,5 +1,5 @@
 // danonino-app/src/services/liveAudio.ts
-// Gestión robusta de Audio para Android: MediaRecorder, VAD decibélico y Reproductor de Voz Neuronal
+// Gestión avanzada de Audio para Android: Prevención de bucle acústico, Mute de Hardware y MediaRecorder
 
 export interface AudioCallbacks {
   onAudioLevel?: (level: number) => void;
@@ -19,8 +19,10 @@ export class LiveAudioSession {
   private isAgentSpeaking = false;
   private isUserSpeaking = false;
   private isRecording = false;
+  private isMuted = false;
+  private recordingStartTime = 0;
+
   private vadSilenceTimer: any = null;
-  private bargeInTimer: any = null;
 
   private recognition: any = null;
   private currentTranscript = '';
@@ -57,8 +59,45 @@ export class LiveAudioSession {
     return stream;
   }
 
+  // Mute de Hardware real
+  public setMuted(muted: boolean) {
+    this.isMuted = muted;
+    if (this.micStream) {
+      this.micStream.getAudioTracks().forEach((track) => {
+        track.enabled = !muted;
+      });
+    }
+
+    if (muted) {
+      if (this.isRecording) {
+        this.stopSegmentRecording();
+      }
+      this.isUserSpeaking = false;
+      if (this.vadSilenceTimer) {
+        clearTimeout(this.vadSilenceTimer);
+        this.vadSilenceTimer = null;
+      }
+      this.callbacks.onAudioLevel?.(0);
+    }
+  }
+
+  public getIsMuted(): boolean {
+    return this.isMuted;
+  }
+
+  // Cuando Danonino está hablando, desactivamos auto-VAD para evitar bucle con los altavoces
   public setAgentSpeaking(speaking: boolean) {
     this.isAgentSpeaking = speaking;
+    if (speaking) {
+      if (this.vadSilenceTimer) {
+        clearTimeout(this.vadSilenceTimer);
+        this.vadSilenceTimer = null;
+      }
+      if (this.isRecording) {
+        this.stopSegmentRecording();
+      }
+      this.isUserSpeaking = false;
+    }
   }
 
   private startLevelMonitoring() {
@@ -67,6 +106,13 @@ export class LiveAudioSession {
 
     const update = () => {
       if (!this.analyser) return;
+
+      if (this.isMuted) {
+        this.callbacks.onAudioLevel?.(0);
+        this.animFrameId = requestAnimationFrame(update);
+        return;
+      }
+
       this.analyser.getByteFrequencyData(dataArray);
 
       let sum = 0;
@@ -79,20 +125,16 @@ export class LiveAudioSession {
 
       this.callbacks.onAudioLevel?.(level);
 
-      // Umbral de habla detectada
-      const THRESHOLD = 12;
+      // Si el agente está hablando, NO activamos auto-grabación para no capturar el altavoz
+      if (this.isAgentSpeaking) {
+        this.animFrameId = requestAnimationFrame(update);
+        return;
+      }
 
-      if (level > THRESHOLD) {
-        // Barge-in: si el usuario habla mientras Danonino habla
-        if (this.isAgentSpeaking) {
-          if (!this.bargeInTimer) {
-            this.bargeInTimer = setTimeout(() => {
-              this.callbacks.onBargeIn?.();
-              this.bargeInTimer = null;
-            }, 150);
-          }
-        }
+      // Umbral calibrado de voz humana real (30 dB)
+      const SPEECH_THRESHOLD = 30;
 
+      if (level > SPEECH_THRESHOLD) {
         if (!this.isUserSpeaking) {
           this.isUserSpeaking = true;
           this.callbacks.onSpeechStart?.();
@@ -104,12 +146,7 @@ export class LiveAudioSession {
           this.vadSilenceTimer = null;
         }
       } else {
-        if (this.bargeInTimer) {
-          clearTimeout(this.bargeInTimer);
-          this.bargeInTimer = null;
-        }
-
-        // Si antes hablaba y ahora hay silencio por más de 1.1s
+        // Silencio sostenido por 950ms tras haber hablado
         if (this.isUserSpeaking && !this.vadSilenceTimer) {
           this.vadSilenceTimer = setTimeout(async () => {
             this.isUserSpeaking = false;
@@ -117,8 +154,12 @@ export class LiveAudioSession {
             const audioB64 = await this.stopSegmentRecording();
             const transcript = this.currentTranscript.trim();
             this.currentTranscript = '';
-            this.callbacks.onSpeechEnd?.(audioB64, transcript);
-          }, 1100);
+
+            // Solo enviar si se capturó audio real válido
+            if (audioB64 || transcript) {
+              this.callbacks.onSpeechEnd?.(audioB64, transcript);
+            }
+          }, 950);
         }
       }
 
@@ -128,30 +169,35 @@ export class LiveAudioSession {
     this.animFrameId = requestAnimationFrame(update);
   }
 
-  // Grabación de segmento con MediaRecorder
+  // Grabación de segmento de voz con MediaRecorder
   public startSegmentRecording() {
-    if (!this.micStream || this.isRecording) return;
+    if (!this.micStream || this.isRecording || this.isMuted) return;
     this.recordedChunks = [];
+    this.recordingStartTime = Date.now();
 
-    let mimeType = 'audio/webm';
-    if (!MediaRecorder.isTypeSupported('audio/webm')) {
-      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
         mimeType = 'audio/mp4';
-      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-        mimeType = 'audio/ogg';
       } else {
         mimeType = '';
       }
     }
 
     try {
-      this.mediaRecorder = mimeType ? new MediaRecorder(this.micStream, { mimeType }) : new MediaRecorder(this.micStream);
+      this.mediaRecorder = mimeType
+        ? new MediaRecorder(this.micStream, { mimeType })
+        : new MediaRecorder(this.micStream);
+
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           this.recordedChunks.push(e.data);
         }
       };
-      this.mediaRecorder.start(100);
+
+      this.mediaRecorder.start(150);
       this.isRecording = true;
     } catch (e) {
       console.warn('Error iniciando MediaRecorder:', e);
@@ -164,13 +210,25 @@ export class LiveAudioSession {
     return new Promise((resolve) => {
       this.mediaRecorder!.onstop = async () => {
         this.isRecording = false;
-        if (this.recordedChunks.length === 0) {
+        const duration = Date.now() - this.recordingStartTime;
+
+        // Descartar grabaciones menores a 600ms para evitar chasquidos y fragmentos vacíos
+        if (duration < 600 || this.recordedChunks.length === 0) {
+          this.recordedChunks = [];
           resolve('');
           return;
         }
 
-        const blob = new Blob(this.recordedChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+        const blob = new Blob(this.recordedChunks, {
+          type: this.mediaRecorder?.mimeType || 'audio/webm'
+        });
         this.recordedChunks = [];
+
+        // Si el archivo pesa menos de 3.5 KB, es ruido/silencio vacío
+        if (blob.size < 3500) {
+          resolve('');
+          return;
+        }
 
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -210,7 +268,7 @@ export class LiveAudioSession {
 
       this.recognition.onerror = () => {};
       this.recognition.onend = () => {
-        if (this.micStream) {
+        if (this.micStream && !this.isMuted) {
           try {
             this.recognition.start();
           } catch (_) {}
@@ -222,7 +280,7 @@ export class LiveAudioSession {
   }
 
   public getWaveformData(): Uint8Array | null {
-    if (!this.analyser) return null;
+    if (!this.analyser || this.isMuted) return null;
     const buffer = new Uint8Array(this.analyser.frequencyBinCount);
     this.analyser.getByteTimeDomainData(buffer);
     return buffer;
@@ -230,7 +288,6 @@ export class LiveAudioSession {
 
   public stop() {
     if (this.vadSilenceTimer) clearTimeout(this.vadSilenceTimer);
-    if (this.bargeInTimer) clearTimeout(this.bargeInTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
 
     if (this.recognition) {

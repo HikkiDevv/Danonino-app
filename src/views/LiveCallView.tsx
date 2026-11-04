@@ -355,9 +355,14 @@ export const LiveCallView: React.FC = () => {
     }
   };
 
-  // Silenciar Micrófono
+  // Silenciar Micrófono con hardware mute real
   const toggleMic = () => {
-    setIsMicMuted((prev) => !prev);
+    const nextMuted = !isMicMuted;
+    setIsMicMuted(nextMuted);
+    audioSessionRef.current?.setMuted(nextMuted);
+    if (nextMuted) {
+      setTelemetry((prev) => ({ ...prev, micLevel: 0 }));
+    }
   };
 
   // Finalizar llamada
@@ -478,15 +483,19 @@ export const LiveCallView: React.FC = () => {
           </div>
 
           {/* Indicador de Nivel de Micrófono en Tiempo Real */}
-          <div className="w-36 mt-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-danonino-card/60 border border-danonino-border/50">
-            <Radio className={`w-3 h-3 ${telemetry.micLevel > 10 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'}`} />
+          <div className="w-40 mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danonino-card/60 border border-danonino-border/50">
+            <Radio className={`w-3 h-3 ${isMicMuted ? 'text-red-400' : telemetry.micLevel > 20 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'}`} />
             <div className="flex-1 bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div
-                className="bg-gradient-to-r from-danonino-cyan to-danonino-lavender h-full transition-all duration-75"
-                style={{ width: `${Math.min(100, telemetry.micLevel * 1.8)}%` }}
+                className={`h-full transition-all duration-75 ${
+                  isMicMuted ? 'bg-red-500' : 'bg-gradient-to-r from-danonino-cyan to-danonino-lavender'
+                }`}
+                style={{ width: isMicMuted ? '100%' : `${Math.min(100, telemetry.micLevel * 1.8)}%` }}
               />
             </div>
-            <span className="text-[9px] font-mono text-slate-400 w-6 text-right">{telemetry.micLevel}%</span>
+            <span className="text-[9px] font-mono text-slate-400 w-12 text-right">
+              {isMicMuted ? 'MUTE' : `${telemetry.micLevel}%`}
+            </span>
           </div>
         </div>
 
