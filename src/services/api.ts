@@ -17,6 +17,13 @@ export const DEFAULT_PUBLIC_API_URL = 'https://administrator-opinions-duty-naval
 export const getBaseApiUrl = (): string => {
   const custom = localStorage.getItem('danonino_api_url');
   if (custom) return custom.replace(/\/+$/, '');
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://127.0.0.1:8768/api';
+    }
+  }
   return DEFAULT_PUBLIC_API_URL;
 };
 

@@ -11,6 +11,7 @@ import { EvolutionView } from './views/EvolutionView';
 import { ActivityView } from './views/ActivityView';
 import { AuthView } from './views/AuthView';
 import { ProfileModal } from './components/ProfileModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   api,
   getBaseApiUrl,
@@ -250,9 +251,11 @@ const AppLayout: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <AppLayout />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppLayout />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 };
 

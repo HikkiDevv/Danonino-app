@@ -26,7 +26,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
   const [avatarClicks, setAvatarClicks] = useState(0);
 
   const getGreeting = () => {
-    const momento = status?.tiempo.momentoDia || 'noche';
+    const momento = status?.tiempo?.momentoDia || 'noche';
     if (momento === 'madrugada') return 'Buenas madrugadas. La calma de la noche es ideal para reflexionar.';
     if (momento === 'mañana') return 'Buen día. Todo sincronizado para una nueva jornada.';
     if (momento === 'tarde') return 'Buenas tardes. Actividades y procesos en curso.';
@@ -34,7 +34,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
   };
 
   const avatarModes = ['idle', 'curious', 'speaking', 'thinking', 'happy'] as const;
-  const currentMode = avatarClicks > 0 ? avatarModes[avatarClicks % avatarModes.length] : (status?.mode || 'idle');
+  const currentMode = avatarClicks > 0 ? avatarModes[avatarClicks % avatarModes.length] : (status?.mode === 'thinking' ? 'thinking' : status?.mode === 'dreaming' ? 'dreaming' : 'idle');
 
   return (
     <div className="pb-24 px-4 pt-4 max-w-md mx-auto space-y-5 animate-fade-in">
@@ -51,7 +51,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
 
           <h2 className="text-xl font-bold mt-4 tracking-tight">Danonino</h2>
           <p className="text-xs text-danonino-cyan font-mono mt-0.5">
-            {status?.tiempo.fechaTexto || 'Cargando reloj oficial...'}
+            {status?.tiempo?.fechaTexto || 'Cargando reloj oficial...'}
           </p>
 
           <p className="text-sm text-slate-300 mt-3 px-2 italic font-normal leading-relaxed">
@@ -92,7 +92,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
         <div className="glass-panel p-3 rounded-2xl text-center">
           <Brain className="w-4 h-4 text-danonino-lavender mx-auto mb-1" />
           <div className="text-base font-bold font-mono">
-            {status?.metricasCognitivas.memoriasTotales ?? 1716}
+            {status?.metricasCognitivas?.memoriasTotales ?? 1716}
           </div>
           <div className="text-[10px] text-slate-400">Recuerdos SQLite</div>
         </div>
@@ -100,7 +100,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
         <div className="glass-panel p-3 rounded-2xl text-center">
           <Zap className="w-4 h-4 text-danonino-cyan mx-auto mb-1" />
           <div className="text-base font-bold font-mono">
-            {status?.metricasCognitivas.episodiosConsolidados ?? 1185}
+            {status?.metricasCognitivas?.episodiosConsolidados ?? 1185}
           </div>
           <div className="text-[10px] text-slate-400">Episodios</div>
         </div>
@@ -108,7 +108,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
         <div className="glass-panel p-3 rounded-2xl text-center">
           <Activity className="w-4 h-4 text-danonino-success mx-auto mb-1" />
           <div className="text-base font-bold font-mono">
-            {status?.metricasCognitivas.ciclosSueno ?? 39}
+            {status?.metricasCognitivas?.ciclosSueno ?? 39}
           </div>
           <div className="text-[10px] text-slate-400">DreamCycles</div>
         </div>
@@ -127,7 +127,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ status, habitat, onRefresh }
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed bg-danonino-card/60 p-3 rounded-xl border border-danonino-border/60">
-          {habitat?.curiosidades[0] || '¿Cómo influyen los anclas temporales en la persistencia del vínculo conversacional humano-IA?'}
+          {habitat?.curiosidades?.[0] || '¿Cómo influyen los anclas temporales en la persistencia del vínculo conversacional humano-IA?'}
         </p>
       </div>
 

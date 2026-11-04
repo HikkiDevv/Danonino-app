@@ -17,9 +17,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onOpenProfile
 }) => {
-  const bat = status?.telemetria.bateria ?? 85;
-  const charging = status?.telemetria.cargando ?? false;
-  const hora = status?.tiempo.horaOficial ?? '00:00';
+  const bat = status?.telemetria?.bateria ?? 85;
+  const charging = status?.telemetria?.cargando ?? false;
+  const hora = status?.tiempo?.horaOficial ?? '00:00';
 
   return (
     <header className="sticky top-0 z-40 glass-panel border-b border-danonino-border/70 px-4 py-2.5 safe-top">
