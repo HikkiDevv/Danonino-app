@@ -1,0 +1,79 @@
+name: Compilación APK Danonino Android (Debug)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '**'
+
+jobs:
+  build-apk:
+    name: Compilar APK Android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout del Código Fuente
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 3. Configurar Java 17 (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: 4. Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 5. Instalar Dependencias de Node
+        run: |
+          npm ci || npm install
+
+      - name: 6. Verificación de Tipos TypeScript y Lint
+        run: |
+          npm run lint
+
+      - name: 7. Compilar Aplicación Web con Vite
+        run: |
+          npm run build
+
+      - name: 8. Sincronizar Proyecto Nativo Capacitor
+        run: |
+          npx cap sync android
+
+      - name: 9. Conceder Permisos de Ejecución a Gradle Wrapper
+        run: |
+          chmod +x android/gradlew
+
+      - name: 10. Compilar APK Debug con Gradle
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: 11. Verificar Generación del APK
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: El archivo APK no fue generado en android/app/build/outputs/apk/debug"
+            exit 1
+          fi
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+          echo "APK generado exitosamente en: $APK_PATH"
+          ls -la "$APK_PATH"
+
+      - name: 12. Publicar Artefacto Descargable en GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: Danonino-Android-Debug
+          path: ${{ env.APK_PATH }}
+          retention-days: 14
+          if-no-files-found: error
