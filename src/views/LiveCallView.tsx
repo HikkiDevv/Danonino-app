@@ -1,5 +1,5 @@
 // danonino-app/src/views/LiveCallView.tsx
-// Danonino Live: Voz bidireccional, cámara, pantalla compartida, VAD y Barge-in
+// Danonino Live: Llamada Multimodal con Audio Real (HTML5 + edge-tts) y MediaRecorder robusto
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,14 +13,14 @@ import {
   SwitchCamera,
   Square,
   Sparkles,
-  Activity,
   Layers,
   Clock,
   Eye,
-  AlertTriangle
+  Send,
+  Radio
 } from 'lucide-react';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
-import { AudioSessionManager, SpeechSynthesisTTS } from '../services/liveAudio';
+import { LiveAudioSession, NativeAudioPlayer } from '../services/liveAudio';
 import { CameraManager, ScreenShareManager } from '../services/liveVision';
 import { api } from '../services/api';
 import { CallState, StreamMode, CallTelemetry } from '../types/live';
@@ -36,6 +36,11 @@ export const LiveCallView: React.FC = () => {
   const [screenActive, setScreenActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
+  // Modo de habla manual (Push-to-talk)
+  const [isManualRecording, setIsManualRecording] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [showTextInput, setShowTextInput] = useState(false);
+
   // Subtítulos y transcripción en vivo
   const [liveTranscript, setLiveTranscript] = useState('');
   const [agentReply, setAgentReply] = useState('');
@@ -48,8 +53,8 @@ export const LiveCallView: React.FC = () => {
   });
 
   // Referencias a servicios
-  const audioManagerRef = useRef<AudioSessionManager | null>(null);
-  const ttsRef = useRef<SpeechSynthesisTTS | null>(null);
+  const audioSessionRef = useRef<LiveAudioSession | null>(null);
+  const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
   const cameraManagerRef = useRef<CameraManager | null>(null);
   const screenManagerRef = useRef<ScreenShareManager | null>(null);
 
@@ -59,12 +64,11 @@ export const LiveCallView: React.FC = () => {
   const isInteractingRef = useRef<boolean>(false);
   const callStateRef = useRef<CallState>('connecting');
 
-  // Mantener ref actualizado para callbacks
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
 
-  // Inicializar llamada y hardware
+  // Inicializar sesión y hardware
   useEffect(() => {
     startLiveSession();
 
@@ -73,7 +77,7 @@ export const LiveCallView: React.FC = () => {
     };
   }, []);
 
-  // Dibujar visualizador de audio continuo
+  // Dibujado continuo del visualizador de audio
   useEffect(() => {
     let animId: number;
     const canvas = canvasWaveformRef.current;
@@ -82,7 +86,7 @@ export const LiveCallView: React.FC = () => {
     if (!ctx) return;
 
     const renderWave = () => {
-      const buffer = audioManagerRef.current?.getWaveformData();
+      const buffer = audioSessionRef.current?.getWaveformData();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (!buffer) {
@@ -91,11 +95,12 @@ export const LiveCallView: React.FC = () => {
       }
 
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = callStateRef.current === 'speaking'
-        ? '#a855f7' // Violeta si habla Danonino
-        : callStateRef.current === 'listening'
-        ? '#06b6d4' // Cian si escucha al usuario
-        : '#3b82f6'; // Azul idle
+      ctx.strokeStyle =
+        callStateRef.current === 'speaking'
+          ? '#a855f7'
+          : callStateRef.current === 'listening'
+          ? '#06b6d4'
+          : '#3b82f6';
 
       ctx.beginPath();
       const sliceWidth = (canvas.width * 1.0) / buffer.length;
@@ -126,11 +131,11 @@ export const LiveCallView: React.FC = () => {
     try {
       setCallState('connecting');
 
-      ttsRef.current = new SpeechSynthesisTTS();
+      audioPlayerRef.current = new NativeAudioPlayer();
       cameraManagerRef.current = new CameraManager({ maxFps: 0.5, quality: 0.65 });
       screenManagerRef.current = new ScreenShareManager({ quality: 0.65 });
 
-      audioManagerRef.current = new AudioSessionManager({
+      audioSessionRef.current = new LiveAudioSession({
         onAudioLevel: (level) => {
           setTelemetry((prev) => ({ ...prev, micLevel: level }));
         },
@@ -139,9 +144,9 @@ export const LiveCallView: React.FC = () => {
             setCallState('listening');
           }
         },
-        onSpeechEnd: (transcript) => {
-          if (transcript.trim().length > 0 && !isInteractingRef.current) {
-            handleUserUtterance(transcript);
+        onSpeechEnd: (audioBase64, transcript) => {
+          if (!isInteractingRef.current && (audioBase64 || transcript)) {
+            handleUserTurn(transcript, audioBase64);
           }
         },
         onBargeIn: () => {
@@ -149,51 +154,56 @@ export const LiveCallView: React.FC = () => {
         }
       });
 
-      await audioManagerRef.current.startMicrophone();
+      await audioSessionRef.current.start();
       setCallState('listening');
 
-      // Saludo inicial de Danonino
-      const bienvenida = 'Te escucho. Puedes hablarme o activar tu cámara y pantalla cuando desees.';
-      setAgentReply(bienvenida);
-      playAgentAudio(bienvenida);
+      // Saludo inicial de Danonino con voz neuronal real
+      const saludoTexto = 'Te escucho. Puedes hablarme o pulsar el micrófono cuando desees.';
+      setAgentReply(saludoTexto);
+
+      try {
+        const audioB64 = await api.getTTSAudio(saludoTexto);
+        if (audioB64) {
+          playAgentAudio(audioB64);
+        }
+      } catch (_) {}
     } catch (err: any) {
       console.error('Error iniciando sesión en vivo:', err);
       setCallState('idle');
     }
   };
 
-  const playAgentAudio = async (text: string) => {
-    if (!ttsRef.current) return;
+  const playAgentAudio = async (audioBase64: string) => {
+    if (!audioPlayerRef.current) return;
     setCallState('speaking');
-    audioManagerRef.current?.setAgentSpeaking(true);
+    audioSessionRef.current?.setAgentSpeaking(true);
 
     try {
-      await ttsRef.current.speak(
-        text,
+      await audioPlayerRef.current.playBase64(
+        audioBase64,
         () => setCallState('speaking'),
         () => {
           setCallState('listening');
-          audioManagerRef.current?.setAgentSpeaking(false);
+          audioSessionRef.current?.setAgentSpeaking(false);
         },
         () => {
           setCallState('listening');
-          audioManagerRef.current?.setAgentSpeaking(false);
+          audioSessionRef.current?.setAgentSpeaking(false);
         }
       );
     } catch (_) {
       setCallState('listening');
-      audioManagerRef.current?.setAgentSpeaking(false);
+      audioSessionRef.current?.setAgentSpeaking(false);
     }
   };
 
   // Barge-in: interrupción inmediata
   const handleBargeIn = async () => {
     if (callStateRef.current === 'speaking' || isInteractingRef.current) {
-      ttsRef.current?.cancel();
-      audioManagerRef.current?.setAgentSpeaking(false);
+      audioPlayerRef.current?.stop();
+      audioSessionRef.current?.setAgentSpeaking(false);
       setCallState('interrupted');
 
-      // Abortar tarea en el backend
       try {
         await api.cancelLiveTask(sessionIdRef.current);
       } catch (_) {}
@@ -205,11 +215,11 @@ export const LiveCallView: React.FC = () => {
     }
   };
 
-  // Procesar turno de habla del usuario + fotograma si hay cámara/pantalla activa
-  const handleUserUtterance = async (transcript: string) => {
+  // Procesar turno de habla (audio real grabado y/o transcripción + fotograma)
+  const handleUserTurn = async (messageText?: string, audioBase64?: string) => {
     if (isInteractingRef.current) return;
     isInteractingRef.current = true;
-    setLiveTranscript(transcript);
+    setLiveTranscript(messageText || (audioBase64 ? 'Nota de voz en vivo...' : ''));
     setCallState('processing');
 
     let imageBase64: string | undefined = undefined;
@@ -234,33 +244,63 @@ export const LiveCallView: React.FC = () => {
     try {
       const startTime = Date.now();
       const res = await api.sendLiveInteraction(
-        transcript,
+        messageText || '',
         imageBase64,
         mode,
-        sessionIdRef.current
+        sessionIdRef.current,
+        audioBase64
       );
 
       const latency = Date.now() - startTime;
       setTelemetry((prev) => ({
         ...prev,
         latencyMs: res.latencyMs || latency,
-        tokensEst: res.tokensEst || Math.round(res.reply.length / 4),
+        tokensEst: res.tokensEst || Math.round((res.reply || '').length / 4),
         fps: cameraManagerRef.current?.getCurrentFps() || 0
       }));
 
       if (res.ok && res.reply && !res.interrupted) {
         setAgentReply(res.reply);
-        await playAgentAudio(res.reply);
+        if (res.audioBase64) {
+          await playAgentAudio(res.audioBase64);
+        } else {
+          setCallState('listening');
+        }
       } else {
         setCallState('listening');
       }
     } catch (err: any) {
       console.error('Error interactuando con Danonino Live:', err);
-      setAgentReply('Interrupción en la respuesta. Puedes repetir.');
+      setAgentReply('Interrupción en la conexión. Puedes repetir.');
       setCallState('listening');
     } finally {
       isInteractingRef.current = false;
     }
+  };
+
+  // Botón Push-to-Talk (Pulsar para hablar)
+  const handleToggleManualRecord = async () => {
+    if (isManualRecording) {
+      setIsManualRecording(false);
+      const audioB64 = await audioSessionRef.current?.stopSegmentRecording();
+      if (audioB64) {
+        handleUserTurn('', audioB64);
+      }
+    } else {
+      handleBargeIn();
+      setIsManualRecording(true);
+      audioSessionRef.current?.startSegmentRecording();
+    }
+  };
+
+  // Enviar mensaje de texto auxiliar en llamada
+  const handleSendText = (e: React.FormEvent) => {
+    e.preventDefault();
+    const txt = textInput.trim();
+    if (!txt) return;
+    setTextInput('');
+    setShowTextInput(false);
+    handleUserTurn(txt);
   };
 
   // Toggle Cámara
@@ -279,12 +319,12 @@ export const LiveCallView: React.FC = () => {
         setCameraActive(true);
         setStreamMode('camera');
       } catch (err) {
-        alert('No se pudo acceder a la cámara. Verifica los permisos.');
+        alert('No se pudo acceder a la cámara. Revisa los permisos.');
       }
     }
   };
 
-  // Cambiar frontal/trasera
+  // Alternar frontal / trasera
   const switchFacing = async () => {
     if (!cameraActive || !cameraManagerRef.current) return;
     const nextFacing = await cameraManagerRef.current.switchFacingMode();
@@ -310,7 +350,7 @@ export const LiveCallView: React.FC = () => {
         setScreenActive(true);
         setStreamMode('screen');
       } catch (err) {
-        alert('No se pudo iniciar la captura de pantalla o fue cancelada por el sistema.');
+        alert('No se pudo iniciar la captura de pantalla.');
       }
     }
   };
@@ -322,8 +362,8 @@ export const LiveCallView: React.FC = () => {
 
   // Finalizar llamada
   const endLiveSession = (shouldNavigate = true) => {
-    ttsRef.current?.cancel();
-    audioManagerRef.current?.stop();
+    audioPlayerRef.current?.stop();
+    audioSessionRef.current?.stop();
     cameraManagerRef.current?.stop();
     screenManagerRef.current?.stop();
     api.cancelLiveTask(sessionIdRef.current).catch(() => {});
@@ -333,7 +373,6 @@ export const LiveCallView: React.FC = () => {
     }
   };
 
-  // Estado visual del avatar
   const getAvatarMode = () => {
     if (callState === 'speaking') return 'speaking';
     if (callState === 'processing') return 'thinking';
@@ -350,7 +389,7 @@ export const LiveCallView: React.FC = () => {
         </div>
 
         {/* Telemetría en vivo */}
-        <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400 bg-danonino-card/70 px-2.5 py-1 rounded-full border border-danonino-border/60">
+        <div className="flex items-center gap-2.5 text-[10px] font-mono text-slate-400 bg-danonino-card/70 px-2.5 py-1 rounded-full border border-danonino-border/60">
           <div className="flex items-center gap-1" title="Latencia">
             <Clock className="w-3 h-3 text-danonino-lavender" />
             <span>{telemetry.latencyMs}ms</span>
@@ -373,18 +412,10 @@ export const LiveCallView: React.FC = () => {
         {/* Previsualización de Cámara o Pantalla (PiP) */}
         <div
           className={`transition-all duration-300 rounded-2xl overflow-hidden border border-danonino-border/80 shadow-2xl bg-black ${
-            cameraActive || screenActive
-              ? 'w-full max-w-xs h-56 mb-4 relative'
-              : 'hidden'
+            cameraActive || screenActive ? 'w-full max-w-xs h-52 mb-3 relative' : 'hidden'
           }`}
         >
-          <video
-            ref={videoPreviewRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
+          <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
 
           <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-mono text-danonino-cyan flex items-center gap-1">
             <Eye className="w-3 h-3" />
@@ -413,11 +444,11 @@ export const LiveCallView: React.FC = () => {
           </div>
 
           {/* Estado de la llamada badge */}
-          <div className="mt-4 px-3 py-1 rounded-full text-xs font-mono font-medium border border-danonino-border/80 bg-danonino-card/90 shadow-sm flex items-center gap-2">
+          <div className="mt-3 px-3 py-1 rounded-full text-xs font-mono font-medium border border-danonino-border/80 bg-danonino-card/90 shadow-sm flex items-center gap-2">
             {callState === 'speaking' && (
               <>
                 <span className="w-2 h-2 rounded-full bg-danonino-lavender animate-ping" />
-                <span className="text-danonino-lavender font-bold">Hablando</span>
+                <span className="text-danonino-lavender font-bold">Danonino Hablando</span>
               </>
             )}
             {callState === 'listening' && (
@@ -429,7 +460,7 @@ export const LiveCallView: React.FC = () => {
             {callState === 'processing' && (
               <>
                 <span className="w-2 h-2 rounded-full bg-yellow-400 animate-spin" />
-                <span className="text-yellow-400">Analizando contexto...</span>
+                <span className="text-yellow-400">Procesando respuesta...</span>
               </>
             )}
             {callState === 'interrupted' && (
@@ -445,10 +476,22 @@ export const LiveCallView: React.FC = () => {
               </>
             )}
           </div>
+
+          {/* Indicador de Nivel de Micrófono en Tiempo Real */}
+          <div className="w-36 mt-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-danonino-card/60 border border-danonino-border/50">
+            <Radio className={`w-3 h-3 ${telemetry.micLevel > 10 ? 'text-danonino-cyan animate-pulse' : 'text-slate-500'}`} />
+            <div className="flex-1 bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-danonino-cyan to-danonino-lavender h-full transition-all duration-75"
+                style={{ width: `${Math.min(100, telemetry.micLevel * 1.8)}%` }}
+              />
+            </div>
+            <span className="text-[9px] font-mono text-slate-400 w-6 text-right">{telemetry.micLevel}%</span>
+          </div>
         </div>
 
-        {/* Subtítulos y transcripción en vivo */}
-        <div className="w-full max-w-sm mt-5 min-h-[64px] px-4 py-2.5 rounded-xl bg-danonino-card/60 border border-danonino-border/40 text-center">
+        {/* Subtítulos y Transcripción */}
+        <div className="w-full max-w-sm mt-4 min-h-[56px] px-4 py-2 rounded-xl bg-danonino-card/60 border border-danonino-border/40 text-center">
           {callState === 'speaking' ? (
             <p className="text-xs text-danonino-lavender font-medium line-clamp-3 leading-relaxed">
               {agentReply}
@@ -459,20 +502,57 @@ export const LiveCallView: React.FC = () => {
             </p>
           ) : (
             <p className="text-[11px] text-slate-500 font-mono">
-              Habla o muestra algo para iniciar...
+              Habla o pulsa el botón del micrófono para hablar...
             </p>
           )}
         </div>
 
         {/* Visualizador de Forma de Onda */}
-        <div className="w-full max-w-xs mt-3 h-10 flex items-center justify-center">
-          <canvas
-            ref={canvasWaveformRef}
-            width={300}
-            height={40}
-            className="w-full h-full opacity-80"
-          />
+        <div className="w-full max-w-xs mt-2 h-8 flex items-center justify-center">
+          <canvas ref={canvasWaveformRef} width={280} height={32} className="w-full h-full opacity-80" />
         </div>
+
+        {/* Botón Central Destacado: Pulsar para hablar / Manos Libres */}
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            onClick={handleToggleManualRecord}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-medium text-xs shadow-lg transition-all active:scale-95 border ${
+              isManualRecording
+                ? 'bg-red-500 text-white border-red-400 animate-pulse'
+                : 'bg-danonino-cyan/20 border-danonino-cyan text-danonino-cyan hover:bg-danonino-cyan/30'
+            }`}
+          >
+            <Mic className="w-4 h-4" />
+            <span>{isManualRecording ? 'Soltar para enviar audio' : 'Pulsar para hablar'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowTextInput((p) => !p)}
+            className="p-2.5 rounded-2xl bg-danonino-card border border-danonino-border text-slate-300 hover:text-white"
+            title="Escribir texto"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Input de texto auxiliar flotante */}
+        {showTextInput && (
+          <form onSubmit={handleSendText} className="w-full max-w-xs mt-2 flex items-center gap-1.5 animate-fade-in">
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Escribe algo a Danonino..."
+              className="flex-1 bg-danonino-card text-xs text-slate-100 px-3 py-2 rounded-xl border border-danonino-border focus:border-danonino-cyan outline-none"
+            />
+            <button
+              type="submit"
+              className="p-2 bg-danonino-cyan text-danonino-bg font-bold rounded-xl text-xs"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Barra de Controles Inferior */}

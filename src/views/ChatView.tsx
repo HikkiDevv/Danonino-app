@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { ChatMessage, AgentStatus } from '../types';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
-import { SpeechSynthesisTTS } from '../services/liveAudio';
+import { NativeAudioPlayer } from '../services/liveAudio';
 
 interface ChatViewProps {
   status: AgentStatus | null;
@@ -17,30 +17,48 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const ttsRef = useRef<SpeechSynthesisTTS | null>(null);
+  const audioPlayerRef = useRef<NativeAudioPlayer | null>(null);
 
   useEffect(() => {
-    ttsRef.current = new SpeechSynthesisTTS();
+    audioPlayerRef.current = new NativeAudioPlayer();
     return () => {
-      ttsRef.current?.cancel();
+      audioPlayerRef.current?.stop();
     };
   }, []);
 
-  const toggleSpeak = (id: string, text: string) => {
-    if (!ttsRef.current) return;
+  const toggleSpeak = async (id: string, text: string) => {
+    if (!audioPlayerRef.current) return;
+
     if (speakingMsgId === id) {
-      ttsRef.current.cancel();
+      audioPlayerRef.current.stop();
       setSpeakingMsgId(null);
-    } else {
-      ttsRef.current.cancel();
-      setSpeakingMsgId(id);
-      ttsRef.current.speak(
-        text,
-        () => setSpeakingMsgId(id),
-        () => setSpeakingMsgId(null),
-        () => setSpeakingMsgId(null)
-      );
+      return;
+    }
+
+    audioPlayerRef.current.stop();
+    setSpeakingMsgId(id);
+    setIsLoadingAudio(true);
+
+    try {
+      const audioBase64 = await api.getTTSAudio(text);
+      if (audioBase64) {
+        setIsLoadingAudio(false);
+        await audioPlayerRef.current.playBase64(
+          audioBase64,
+          () => setSpeakingMsgId(id),
+          () => setSpeakingMsgId(null),
+          () => setSpeakingMsgId(null)
+        );
+      } else {
+        setSpeakingMsgId(null);
+        setIsLoadingAudio(false);
+      }
+    } catch (err) {
+      console.error('Error reproduciendo audio:', err);
+      setSpeakingMsgId(null);
+      setIsLoadingAudio(false);
     }
   };
 
@@ -194,10 +212,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
                         title="Escuchar respuesta"
                       >
                         {speakingMsgId === String(msg.id) ? (
-                          <>
-                            <VolumeX className="w-3 h-3" />
-                            <span>Detener</span>
-                          </>
+                          isLoadingAudio ? (
+                            <>
+                              <Volume2 className="w-3 h-3 animate-spin text-danonino-lavender" />
+                              <span className="text-danonino-lavender">Generando voz...</span>
+                            </>
+                          ) : (
+                            <>
+                              <VolumeX className="w-3 h-3" />
+                              <span>Detener</span>
+                            </>
+                          )
                         ) : (
                           <>
                             <Volume2 className="w-3 h-3" />

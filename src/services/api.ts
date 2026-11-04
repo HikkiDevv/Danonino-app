@@ -106,14 +106,27 @@ export const api = {
     message: string,
     imageBase64?: string,
     streamType: string = 'voice_only',
-    sessionId: string = 'live_session'
-  ): Promise<{ ok: boolean; reply: string; interrupted?: boolean; sessionId: string; streamType: string; latencyMs: number; tokensEst: number; hasVisual: boolean }> {
+    sessionId: string = 'live_session',
+    audioBase64?: string
+  ): Promise<{
+    ok: boolean;
+    reply: string;
+    audioBase64?: string;
+    interrupted?: boolean;
+    sessionId: string;
+    streamType: string;
+    latencyMs: number;
+    tokensEst: number;
+    hasVisual: boolean;
+    hasAudio?: boolean;
+  }> {
     const res = await fetch(`${getBaseApiUrl()}/live/interact`, {
       method: 'POST',
       headers: buildHeaders(),
       body: JSON.stringify({
         message,
         imageBase64,
+        audioBase64,
         streamType,
         sessionId,
         sender: 'Dan',
@@ -122,6 +135,17 @@ export const api = {
     });
     if (!res.ok) throw new Error(`Error en Danonino Live: ${res.statusText}`);
     return res.json();
+  },
+
+  async getTTSAudio(text: string, voice = 'es-PE-AlexNeural'): Promise<string> {
+    const res = await fetch(`${getBaseApiUrl()}/live/tts`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ text, voice })
+    });
+    if (!res.ok) throw new Error(`Error generando voz: ${res.statusText}`);
+    const data = await res.json();
+    return data.audioBase64;
   },
 
   async cancelLiveTask(sessionId: string = 'live_session'): Promise<{ ok: boolean; cancelled: boolean }> {

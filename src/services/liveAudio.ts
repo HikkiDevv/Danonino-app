@@ -1,31 +1,33 @@
 // danonino-app/src/services/liveAudio.ts
-// Gestión avanzada de Audio, VAD, Web Speech STT y TTS con Barge-in
+// Gestión robusta de Audio para Android: MediaRecorder, VAD decibélico y Reproductor de Voz Neuronal
 
-export interface VADCallbacks {
-  onSpeechStart?: () => void;
-  onSpeechEnd?: (finalTranscript: string) => void;
+export interface AudioCallbacks {
   onAudioLevel?: (level: number) => void;
+  onSpeechStart?: () => void;
+  onSpeechEnd?: (audioBase64: string, transcript: string) => void;
   onBargeIn?: () => void;
 }
 
-export class AudioSessionManager {
+export class LiveAudioSession {
   private audioCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private micStream: MediaStream | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
   private animFrameId: number | null = null;
-  private isListening = false;
+
   private isAgentSpeaking = false;
-  private vadSilenceTimer: any = null;
-  private userSpeakingTimer: any = null;
   private isUserSpeaking = false;
+  private isRecording = false;
+  private vadSilenceTimer: any = null;
+  private bargeInTimer: any = null;
 
   private recognition: any = null;
   private currentTranscript = '';
-  private finalTranscriptBuffer = '';
 
-  constructor(private callbacks: VADCallbacks = {}) {}
+  constructor(private callbacks: AudioCallbacks = {}) {}
 
-  public async startMicrophone(): Promise<MediaStream> {
+  public async start(): Promise<MediaStream> {
     if (this.micStream) return this.micStream;
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -46,12 +48,12 @@ export class AudioSessionManager {
       const source = this.audioCtx.createMediaStreamSource(stream);
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.4;
+      this.analyser.smoothingTimeConstant = 0.3;
       source.connect(this.analyser);
     }
 
     this.startLevelMonitoring();
-    this.initSpeechRecognition();
+    this.initOptionalSpeechRecognition();
     return stream;
   }
 
@@ -67,7 +69,6 @@ export class AudioSessionManager {
       if (!this.analyser) return;
       this.analyser.getByteFrequencyData(dataArray);
 
-      // Calcular RMS promedio
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) {
         sum += dataArray[i];
@@ -78,22 +79,24 @@ export class AudioSessionManager {
 
       this.callbacks.onAudioLevel?.(level);
 
-      // Detección de umbral de voz (VAD)
-      const SPEECH_THRESHOLD = 18; // Umbral de voz
-      if (level > SPEECH_THRESHOLD) {
-        // Si el usuario habla mientras Danonino está hablando -> Barge-In (interrupción)
+      // Umbral de habla detectada
+      const THRESHOLD = 12;
+
+      if (level > THRESHOLD) {
+        // Barge-in: si el usuario habla mientras Danonino habla
         if (this.isAgentSpeaking) {
-          if (!this.userSpeakingTimer) {
-            this.userSpeakingTimer = setTimeout(() => {
+          if (!this.bargeInTimer) {
+            this.bargeInTimer = setTimeout(() => {
               this.callbacks.onBargeIn?.();
-              this.userSpeakingTimer = null;
-            }, 180); // 180ms sostenidos para evitar ruidos breves
+              this.bargeInTimer = null;
+            }, 150);
           }
         }
 
         if (!this.isUserSpeaking) {
           this.isUserSpeaking = true;
           this.callbacks.onSpeechStart?.();
+          this.startSegmentRecording();
         }
 
         if (this.vadSilenceTimer) {
@@ -101,23 +104,21 @@ export class AudioSessionManager {
           this.vadSilenceTimer = null;
         }
       } else {
-        if (this.userSpeakingTimer) {
-          clearTimeout(this.userSpeakingTimer);
-          this.userSpeakingTimer = null;
+        if (this.bargeInTimer) {
+          clearTimeout(this.bargeInTimer);
+          this.bargeInTimer = null;
         }
 
-        // Si antes estaba hablando y ahora hay silencio sostenido (900ms)
+        // Si antes hablaba y ahora hay silencio por más de 1.1s
         if (this.isUserSpeaking && !this.vadSilenceTimer) {
-          this.vadSilenceTimer = setTimeout(() => {
+          this.vadSilenceTimer = setTimeout(async () => {
             this.isUserSpeaking = false;
             this.vadSilenceTimer = null;
-            const textToSend = (this.finalTranscriptBuffer + ' ' + this.currentTranscript).trim();
-            if (textToSend.length > 0) {
-              this.callbacks.onSpeechEnd?.(textToSend);
-              this.finalTranscriptBuffer = '';
-              this.currentTranscript = '';
-            }
-          }, 950);
+            const audioB64 = await this.stopSegmentRecording();
+            const transcript = this.currentTranscript.trim();
+            this.currentTranscript = '';
+            this.callbacks.onSpeechEnd?.(audioB64, transcript);
+          }, 1100);
         }
       }
 
@@ -127,51 +128,89 @@ export class AudioSessionManager {
     this.animFrameId = requestAnimationFrame(update);
   }
 
-  private initSpeechRecognition() {
-    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) {
-      console.warn('SpeechRecognition no soportado en este navegador/WebView');
-      return;
+  // Grabación de segmento con MediaRecorder
+  public startSegmentRecording() {
+    if (!this.micStream || this.isRecording) return;
+    this.recordedChunks = [];
+
+    let mimeType = 'audio/webm';
+    if (!MediaRecorder.isTypeSupported('audio/webm')) {
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg';
+      } else {
+        mimeType = '';
+      }
     }
 
     try {
-      this.recognition = new SpeechRecognitionClass();
+      this.mediaRecorder = mimeType ? new MediaRecorder(this.micStream, { mimeType }) : new MediaRecorder(this.micStream);
+      this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          this.recordedChunks.push(e.data);
+        }
+      };
+      this.mediaRecorder.start(100);
+      this.isRecording = true;
+    } catch (e) {
+      console.warn('Error iniciando MediaRecorder:', e);
+    }
+  }
+
+  public async stopSegmentRecording(): Promise<string> {
+    if (!this.mediaRecorder || !this.isRecording) return '';
+
+    return new Promise((resolve) => {
+      this.mediaRecorder!.onstop = async () => {
+        this.isRecording = false;
+        if (this.recordedChunks.length === 0) {
+          resolve('');
+          return;
+        }
+
+        const blob = new Blob(this.recordedChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+        this.recordedChunks = [];
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string) || '';
+          resolve(base64);
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      };
+
+      try {
+        this.mediaRecorder!.stop();
+      } catch (_) {
+        this.isRecording = false;
+        resolve('');
+      }
+    });
+  }
+
+  private initOptionalSpeechRecognition() {
+    const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechClass) return;
+
+    try {
+      this.recognition = new SpeechClass();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
       this.recognition.lang = 'es-ES';
 
       this.recognition.onresult = (event: any) => {
-        let interim = '';
-        let finalChunk = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalChunk += event.results[i][0].transcript;
-          } else {
-            interim += event.results[i][0].transcript;
-          }
+        let text = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          text += event.results[i][0].transcript + ' ';
         }
-
-        if (finalChunk) {
-          this.finalTranscriptBuffer += ' ' + finalChunk;
-        }
-        this.currentTranscript = interim;
-
-        // Si el usuario emite transcripción mientras Danonino habla -> Disparar Barge-in inmediato
-        if (this.isAgentSpeaking && (interim.length > 2 || finalChunk.length > 0)) {
-          this.callbacks.onBargeIn?.();
-        }
+        this.currentTranscript = text;
       };
 
-      this.recognition.onerror = (e: any) => {
-        if (e.error !== 'no-speech') {
-          console.warn('SpeechRecognition error:', e.error);
-        }
-      };
-
+      this.recognition.onerror = () => {};
       this.recognition.onend = () => {
-        // Reinicio automático continuo si seguimos escuchando
-        if (this.isListening) {
+        if (this.micStream) {
           try {
             this.recognition.start();
           } catch (_) {}
@@ -179,10 +218,7 @@ export class AudioSessionManager {
       };
 
       this.recognition.start();
-      this.isListening = true;
-    } catch (e) {
-      console.error('Error iniciando SpeechRecognition:', e);
-    }
+    } catch (_) {}
   }
 
   public getWaveformData(): Uint8Array | null {
@@ -193,9 +229,8 @@ export class AudioSessionManager {
   }
 
   public stop() {
-    this.isListening = false;
     if (this.vadSilenceTimer) clearTimeout(this.vadSilenceTimer);
-    if (this.userSpeakingTimer) clearTimeout(this.userSpeakingTimer);
+    if (this.bargeInTimer) clearTimeout(this.bargeInTimer);
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
 
     if (this.recognition) {
@@ -206,8 +241,14 @@ export class AudioSessionManager {
       this.recognition = null;
     }
 
+    if (this.mediaRecorder && this.isRecording) {
+      try {
+        this.mediaRecorder.stop();
+      } catch (_) {}
+    }
+
     if (this.micStream) {
-      this.micStream.getTracks().forEach((track) => track.stop());
+      this.micStream.getTracks().forEach((t) => t.stop());
       this.micStream = null;
     }
 
@@ -220,109 +261,68 @@ export class AudioSessionManager {
 }
 
 // -------------------------------------------------------------
-// SpeechSynthesisTTS: Síntesis local instantánea y división inteligente
+// NativeAudioPlayer: Reproductor HTML5 Audio para la voz de Danonino
 // -------------------------------------------------------------
-export class SpeechSynthesisTTS {
-  private currentUtterance: SpeechSynthesisUtterance | null = null;
-  private isSpeaking = false;
-  private voice: SpeechSynthesisVoice | null = null;
-  public rate = 1.05;
-  public pitch = 1.0;
+export class NativeAudioPlayer {
+  private audioElement: HTMLAudioElement | null = null;
+  private isPlaying = false;
 
-  constructor() {
-    this.initVoice();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        this.initVoice();
-      };
-    }
-  }
-
-  private initVoice() {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    const voices = window.speechSynthesis.getVoices();
-    // Priorizar español
-    const esVoice =
-      voices.find((v) => v.lang.startsWith('es') && (v.name.includes('Natural') || v.name.includes('Google'))) ||
-      voices.find((v) => v.lang.startsWith('es')) ||
-      voices[0];
-    if (esVoice) {
-      this.voice = esVoice;
-    }
-  }
-
-  public cancel() {
-    this.isSpeaking = false;
-    this.currentUtterance = null;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-  }
-
-  public speak(
-    text: string,
+  public playBase64(
+    audioBase64: string,
     onStart?: () => void,
-    onEnd?: () => void,
+    onEnded?: () => void,
     onError?: (err: any) => void
   ): Promise<void> {
     return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-        resolve();
-        return;
-      }
+      this.stop();
 
-      this.cancel();
+      const src = audioBase64.startsWith('data:')
+        ? audioBase64
+        : `data:audio/mp3;base64,${audioBase64}`;
 
-      // Limpiar texto de formato markdown y URLs para una locución limpia
-      const cleanText = text
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/#+\s+/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/https?:\/\/\S+/g, '')
-        .trim();
+      const audio = new Audio(src);
+      this.audioElement = audio;
 
-      if (!cleanText) {
-        resolve();
-        return;
-      }
-
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      this.currentUtterance = utterance;
-      if (this.voice) {
-        utterance.voice = this.voice;
-      }
-      utterance.lang = 'es-ES';
-      utterance.rate = this.rate;
-      utterance.pitch = this.pitch;
-
-      utterance.onstart = () => {
-        this.isSpeaking = true;
+      audio.onplay = () => {
+        this.isPlaying = true;
         onStart?.();
       };
 
-      utterance.onend = () => {
-        this.isSpeaking = false;
-        this.currentUtterance = null;
-        onEnd?.();
+      audio.onended = () => {
+        this.isPlaying = false;
+        this.audioElement = null;
+        onEnded?.();
         resolve();
       };
 
-      utterance.onerror = (e) => {
-        this.isSpeaking = false;
-        this.currentUtterance = null;
-        if (e.error !== 'canceled' && e.error !== 'interrupted') {
-          onError?.(e);
-        }
+      audio.onerror = (e) => {
+        this.isPlaying = false;
+        this.audioElement = null;
+        onError?.(e);
         resolve();
       };
 
-      window.speechSynthesis.speak(utterance);
+      audio.play().catch((err) => {
+        this.isPlaying = false;
+        onError?.(err);
+        resolve();
+      });
     });
   }
 
-  public getIsSpeaking(): boolean {
-    return this.isSpeaking || (typeof window !== 'undefined' && window.speechSynthesis?.speaking);
+  public stop() {
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+        this.audioElement.currentTime = 0;
+        this.audioElement.src = '';
+      } catch (_) {}
+      this.audioElement = null;
+    }
+    this.isPlaying = false;
+  }
+
+  public getIsPlaying(): boolean {
+    return this.isPlaying;
   }
 }
