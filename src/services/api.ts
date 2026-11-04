@@ -7,15 +7,15 @@ import {
   AutonomyData
 } from '../types';
 
-// En Capacitor/Android nativo, las peticiones van directamente al servidor local en Termux (127.0.0.1:8768)
-// En desarrollo web Vite, van relativas a '/api' que es redirigido por el proxy de Vite
+// URL pública mundial permanente vía Cloudflare Tunnel para que cualquier persona con el APK pueda conectarse
+export const DEFAULT_PUBLIC_API_URL = 'https://administrator-opinions-duty-naval.trycloudflare.com/api';
 const isNative = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform?.();
 
 export const getBaseApiUrl = (): string => {
   const custom = localStorage.getItem('danonino_api_url');
   if (custom) return custom.replace(/\/+$/, '');
-  if (isNative) return 'http://127.0.0.1:8768/api';
-  return '/api';
+  // Por defecto usar la URL pública del túnel para soporte multiusuario universal
+  return DEFAULT_PUBLIC_API_URL;
 };
 
 export const getAuthToken = (): string => {

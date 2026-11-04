@@ -34,6 +34,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Servicio Foreground para Captura de Pantalla Android MediaProjection -->
+        <service
+            android:name=".ScreenCaptureService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 
     <!-- Permissions para Danonino Live (Voz, Cámara, Pantalla) -->

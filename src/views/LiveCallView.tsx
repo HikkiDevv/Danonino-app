@@ -235,11 +235,18 @@ export const LiveCallView: React.FC = () => {
       imageBase64 = screenShotBase64;
       mode = 'screen';
     } else if (screenActive && screenManagerRef.current) {
-      const frame = screenManagerRef.current.captureFrame();
+      const frame = await screenManagerRef.current.captureFrameAsync();
       if (frame) {
         imageBase64 = frame;
         mode = 'screen';
       }
+    }
+
+    // Evitar llamadas vacías si no hay audio real ni texto ni imagen
+    if (!messageText && !audioBase64 && !imageBase64) {
+      isInteractingRef.current = false;
+      setCallState('listening');
+      return;
     }
 
     setStreamMode(mode);
@@ -340,7 +347,7 @@ export const LiveCallView: React.FC = () => {
     setFacingMode(nextFacing);
   };
 
-  // Selector de Captura de Pantalla para Android
+  // Compartir Pantalla nativa de Android (MediaProjection)
   const toggleScreenShare = async () => {
     if (screenActive || screenShotBase64) {
       screenManagerRef.current?.stop();
@@ -355,21 +362,22 @@ export const LiveCallView: React.FC = () => {
       setCameraActive(false);
     }
 
-    // Intentar getDisplayMedia primero si el navegador lo admite
-    if (navigator.mediaDevices && typeof (navigator.mediaDevices as any).getDisplayMedia === 'function') {
-      try {
-        await screenManagerRef.current?.start(() => {
-          setScreenActive(false);
-          setStreamMode('voice_only');
-        });
-        setScreenActive(true);
-        setStreamMode('screen');
+    try {
+      // Inicia el diálogo del sistema Android ("¿Iniciar proyección con Danonino?")
+      await screenManagerRef.current?.start(() => {
+        setScreenActive(false);
+        setStreamMode('voice_only');
+      });
+      setScreenActive(true);
+      setStreamMode('screen');
+    } catch (err: any) {
+      // Si el usuario canceló el diálogo del sistema, no hacer nada
+      if (err.message && err.message.includes('canceló')) {
         return;
-      } catch (_) {}
+      }
+      // Si no soporta proyección nativa en este entorno, ofrecer selector de capturas
+      screenFileInputRef.current?.click();
     }
-
-    // Si Android WebView no soporta getDisplayMedia, abrir selector de capturas de pantalla de Android
-    screenFileInputRef.current?.click();
   };
 
   const handleScreenFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -470,7 +478,11 @@ export const LiveCallView: React.FC = () => {
           ) : screenShotBase64 ? (
             <img src={screenShotBase64} alt="Pantalla" className="w-full h-full object-contain bg-slate-900" />
           ) : (
-            <video ref={videoPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/90 text-center p-3">
+              <Monitor className="w-8 h-8 text-purple-400 mb-1.5 animate-pulse" />
+              <span className="text-xs font-semibold text-slate-200">Transmitiendo Pantalla de Android</span>
+              <span className="text-[10px] text-slate-400 mt-0.5">Danonino observa tu pantalla en vivo</span>
+            </div>
           )}
 
           <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-mono text-danonino-cyan flex items-center gap-1">
@@ -480,7 +492,9 @@ export const LiveCallView: React.FC = () => {
                 ? facingMode === 'user'
                   ? 'Cámara Frontal'
                   : 'Cámara Trasera'
-                : 'Captura de Pantalla'}
+                : screenShotBase64
+                ? 'Captura de Pantalla'
+                : 'Pantalla Android en Vivo'}
             </span>
           </div>
 

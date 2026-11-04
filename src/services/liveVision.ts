@@ -1,5 +1,15 @@
 // danonino-app/src/services/liveVision.ts
-// Gestión de Cámara, Pantalla Compartida, Compresión y Rate Limiting de Fotogramas
+// Gestión de Cámara y Proyección Nativa de Pantalla Android (MediaProjection)
+
+import { registerPlugin, Capacitor } from '@capacitor/core';
+
+export interface ScreenCapturePluginInterface {
+  startCapture(): Promise<{ success: boolean }>;
+  getFrame(): Promise<{ frame: string | null }>;
+  stopCapture(): Promise<{ stopped: boolean }>;
+}
+
+export const NativeScreenCapture = registerPlugin<ScreenCapturePluginInterface>('ScreenCapture');
 
 export interface VisionOptions {
   maxWidth?: number;
@@ -44,7 +54,6 @@ export class CameraManager {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
-      // Fallback si no admite el constraint exacto
       this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
 
@@ -75,7 +84,7 @@ export class CameraManager {
     const minIntervalMs = 1000 / (this.options.maxFps || 0.4);
 
     if (!force && now - this.lastCaptureTime < minIntervalMs) {
-      return null; // Rate limit activo
+      return null;
     }
 
     if (!this.videoEl) {
@@ -122,7 +131,6 @@ export class CameraManager {
       this.fpsWindowStart = now;
     }
 
-    // Devuelve data URL en formato image/jpeg con compresión controlada
     return this.canvasEl.toDataURL('image/jpeg', this.options.quality || 0.65);
   }
 
@@ -144,9 +152,11 @@ export class CameraManager {
 }
 
 // -------------------------------------------------------------
-// ScreenShareManager: Captura de pantalla Android / Web MediaProjection
+// ScreenShareManager: Proyección de Pantalla Nativa Android
 // -------------------------------------------------------------
 export class ScreenShareManager {
+  private isNative = false;
+  private isCapturing = false;
   private stream: MediaStream | null = null;
   private videoEl: HTMLVideoElement | null = null;
   private canvasEl: HTMLCanvasElement | null = null;
@@ -161,39 +171,62 @@ export class ScreenShareManager {
     };
   }
 
-  public async start(onEnded?: () => void): Promise<MediaStream> {
+  public async start(onEnded?: () => void): Promise<boolean> {
     this.stop();
     this.onStopCallback = onEnded || null;
 
-    if (!navigator.mediaDevices?.getDisplayMedia) {
-      throw new Error('La captura de pantalla no es soportada directamente en este navegador/WebView');
+    // Si estamos en Android nativo (Capacitor), usar el plugin nativo de MediaProjection
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const res = await NativeScreenCapture.startCapture();
+        if (res && res.success) {
+          this.isNative = true;
+          this.isCapturing = true;
+          return true;
+        }
+      } catch (err: any) {
+        throw new Error(err.message || 'El usuario canceló la captura de pantalla');
+      }
     }
 
-    this.stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        cursor: 'always'
-      } as any,
-      audio: false
-    });
+    // Fallback para navegador web estándar si soporta getDisplayMedia
+    if (navigator.mediaDevices && typeof (navigator.mediaDevices as any).getDisplayMedia === 'function') {
+      this.stream = await (navigator.mediaDevices as any).getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
 
-    const videoTrack = this.stream.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.onended = () => {
-        this.stop();
-        this.onStopCallback?.();
-      };
+      const videoTrack = this.stream?.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          this.stop();
+          this.onStopCallback?.();
+        };
+      }
+
+      this.videoEl = document.createElement('video');
+      this.videoEl.muted = true;
+      this.videoEl.playsInline = true;
+      this.videoEl.srcObject = this.stream;
+      await this.videoEl.play().catch(() => {});
+
+      this.isCapturing = true;
+      return true;
     }
 
-    this.videoEl = document.createElement('video');
-    this.videoEl.muted = true;
-    this.videoEl.playsInline = true;
-    this.videoEl.srcObject = this.stream;
-    await this.videoEl.play().catch(() => {});
-
-    return this.stream;
+    throw new Error('La captura de pantalla no es soportada en este entorno');
   }
 
-  public captureFrame(): string | null {
+  public async captureFrameAsync(): Promise<string | null> {
+    if (this.isNative) {
+      try {
+        const res = await NativeScreenCapture.getFrame();
+        return res.frame || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
     if (!this.stream || !this.videoEl) return null;
     const vw = this.videoEl.videoWidth;
     const vh = this.videoEl.videoHeight;
@@ -224,10 +257,15 @@ export class ScreenShareManager {
   }
 
   public isActive(): boolean {
-    return !!(this.stream && this.stream.active && this.stream.getVideoTracks().some((t) => t.readyState === 'live'));
+    return this.isCapturing;
   }
 
   public stop() {
+    if (this.isNative) {
+      NativeScreenCapture.stopCapture().catch(() => {});
+      this.isNative = false;
+    }
+    this.isCapturing = false;
     if (this.stream) {
       this.stream.getTracks().forEach((track) => track.stop());
       this.stream = null;

@@ -204,8 +204,8 @@ export class LiveAudioSession {
         this.isRecording = false;
         const duration = Date.now() - this.recordingStartTime;
 
-        // Descartar grabaciones menores a 700ms para evitar ruidos accidentales
-        if (duration < 700 || this.recordedChunks.length === 0) {
+        // Permitir oraciones desde 250ms
+        if (duration < 250 || this.recordedChunks.length === 0) {
           this.recordedChunks = [];
           resolve('');
           return;
@@ -216,8 +216,8 @@ export class LiveAudioSession {
         });
         this.recordedChunks = [];
 
-        // Si el archivo pesa menos de 4 KB, es ruido/silencio
-        if (blob.size < 4000) {
+        // Solo descartar buffers completamente vacíos menores a 200 bytes
+        if (blob.size < 200) {
           resolve('');
           return;
         }
