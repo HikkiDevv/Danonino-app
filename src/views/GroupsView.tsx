@@ -198,7 +198,7 @@ const ChatGrupo: React.FC<{ grupoId: string; onVolver: () => void }> = ({ grupoI
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-2 p-3 border-b border-danonino-border bg-danonino-card/40">
+      <header style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }} className="flex items-center gap-2 p-3 border-b border-danonino-border bg-danonino-card/40">
         <button type="button" onClick={onVolver} aria-label="Volver" className="text-danonino-muted"><ArrowLeft className="w-5 h-5" /></button>
         <button type="button" onClick={() => setVerMiembros(!verMiembros)} className="flex-1 text-left min-w-0">
           <p className="text-sm font-bold text-white truncate">{grupo?.nombre || 'Grupo'}</p>
@@ -293,7 +293,7 @@ const ChatGrupo: React.FC<{ grupoId: string; onVolver: () => void }> = ({ grupoI
         <div ref={fin} />
       </div>
 
-      <form onSubmit={enviar} className="flex gap-2 p-3 border-t border-danonino-border">
+      <form onSubmit={enviar} style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }} className="flex gap-2 p-3 border-t border-danonino-border">
         <input className={campo} value={texto} maxLength={1500} onChange={(e) => setTexto(e.target.value)} placeholder="Escribe al grupo..." />
         <button type="submit" disabled={!texto.trim()} aria-label="Enviar" className={botonPrincipal}><Send className="w-4 h-4" /></button>
       </form>
@@ -322,8 +322,11 @@ export const GroupsView: React.FC = () => {
 
   if (abierto) {
     return (
-      <div className="h-[calc(100vh-5rem)]">
-        <ChatGrupo grupoId={abierto} onVolver={() => { setAbierto(null); cargar(); }} />
+      // A pantalla completa, por encima de la cabecera y de la barra: como un chat de WhatsApp
+      <div className="fixed inset-0 z-[60] bg-danonino-bg">
+        <div className="h-full max-w-md mx-auto">
+          <ChatGrupo grupoId={abierto} onVolver={() => { setAbierto(null); cargar(); }} />
+        </div>
       </div>
     );
   }
