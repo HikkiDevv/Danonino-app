@@ -19,16 +19,26 @@ import {
 // Servicio de Danonino en Railway
 export const DEFAULT_PUBLIC_API_URL = 'https://danonino-production.up.railway.app/api';
 
+// Direcciones que guardaron versiones anteriores de la app: el túnel caducó y el bot del móvil está apagado.
+// Se borran una sola vez; lo que alguien configure después a mano se respeta.
+const limpiarDireccionAntigua = (): void => {
+  if (localStorage.getItem('danonino_api_migrada_railway')) return;
+  const guardada = localStorage.getItem('danonino_api_url') || '';
+  if (/trycloudflare\.com|127\.0\.0\.1|localhost/i.test(guardada)) {
+    localStorage.removeItem('danonino_api_url');
+  }
+  localStorage.setItem('danonino_api_migrada_railway', '1');
+};
+
 export const getBaseApiUrl = (): string => {
+  if (!import.meta.env.DEV) limpiarDireccionAntigua();
+
   const custom = localStorage.getItem('danonino_api_url');
   if (custom) return custom.replace(/\/+$/, '');
 
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://127.0.0.1:8768/api';
-    }
-  }
+  // Solo en desarrollo: en Android, Capacitor también sirve la app desde "localhost"
+  if (import.meta.env.DEV) return 'http://127.0.0.1:8768/api';
+
   return DEFAULT_PUBLIC_API_URL;
 };
 
