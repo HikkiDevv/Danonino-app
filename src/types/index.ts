@@ -228,6 +228,50 @@ export interface OneirosAprendizaje {
   errores: string[];
 }
 
+export interface PerfilDanonino {
+  userId: string;
+  apodo: string;
+  descripcion: string;
+  aspecto: string;
+  tieneAvatar: boolean;
+  avatarVersion: number;
+}
+
+export interface GrupoDanonino {
+  id: string;
+  nombre: string;
+  estado: 'activo' | 'invitado';
+  personas: number;
+  ultimo: string | null;
+}
+
+export interface GrupoMiembro {
+  userId: string;
+  nombre: string;
+  username: string;
+  estado: 'activo' | 'invitado';
+  agenteActivo: boolean;
+  apodo: string;
+  tieneAvatar: boolean;
+  avatarVersion: number;
+}
+
+export interface GrupoDetalle {
+  id: string;
+  nombre: string;
+  creadorId: string;
+  miembros: GrupoMiembro[];
+}
+
+export interface GrupoMensaje {
+  id: string;
+  tipo: 'persona' | 'agente' | 'sistema';
+  userId: string;
+  nombre: string;
+  texto: string;
+  creado: string;
+}
+
 export interface OneirosAsociacion {
   a_origen: string;
   a_texto: string;

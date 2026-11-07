@@ -15,7 +15,11 @@ import {
   OneirosObservatoryData,
   OneirosAprendizaje,
   OneirosPanelCiclo,
-  OneirosCicloConfig
+  OneirosCicloConfig,
+  PerfilDanonino,
+  GrupoDanonino,
+  GrupoDetalle,
+  GrupoMensaje
 } from '../types';
 
 // Servicio de Danonino en Railway
@@ -74,6 +78,35 @@ export const clearAuthSession = (): void => {
   localStorage.removeItem('danonino_user_token');
   localStorage.removeItem('danonino_user_profile');
   localStorage.removeItem('danonino_active_conv');
+};
+
+const pedirJson = async (ruta: string, metodo: string = 'GET', cuerpo?: unknown): Promise<any> => {
+  const res = await fetch(`${getBaseApiUrl()}${ruta}`, {
+    method: metodo,
+    headers: buildHeaders(),
+    ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) })
+  });
+  const datos = await res.json().catch(() => null);
+  if (!res.ok || !datos) throw new Error(datos?.error || `Error del servidor (${res.status})`);
+  return datos;
+};
+
+/** Las imágenes no pueden llevar cabeceras: la sesión viaja en la dirección. */
+export const avatarUrl = (userId: string, version: number = 0): string =>
+  `${getBaseApiUrl()}/agente/${encodeURIComponent(userId)}/avatar?v=${version}&user_token=${encodeURIComponent(getUserToken() || '')}`;
+
+/** Recuerda la foto del Danonino de esta cuenta para mostrarla en toda la app. */
+export const guardarAvatarLocal = (perfil: PerfilDanonino): void => {
+  localStorage.setItem('danonino_mi_avatar', JSON.stringify({ userId: perfil.userId, version: perfil.avatarVersion, tiene: perfil.tieneAvatar, apodo: perfil.apodo }));
+};
+
+export const miAvatarLocal = (): string | null => {
+  try {
+    const a = JSON.parse(localStorage.getItem('danonino_mi_avatar') || 'null');
+    return a?.tiene && a.userId === getCurrentUser()?.id ? avatarUrl(a.userId, a.version) : null;
+  } catch {
+    return null;
+  }
 };
 
 const buildHeaders = (): HeadersInit => {
@@ -482,6 +515,58 @@ export const api = {
     });
     if (!res.ok) throw new Error(`Error iniciando sueño forzado: ${res.statusText}`);
     return res.json();
+  },
+
+  async getMiDanonino(): Promise<{ ok: boolean; perfil: PerfilDanonino }> {
+    return pedirJson('/agente');
+  },
+
+  async guardarMiDanonino(cambios: { apodo?: string; descripcion?: string }): Promise<{ ok: boolean; perfil: PerfilDanonino }> {
+    return pedirJson('/agente', 'PUT', cambios);
+  },
+
+  async subirAvatar(imagen: string): Promise<{ ok: boolean; perfil: PerfilDanonino }> {
+    return pedirJson('/agente/avatar', 'POST', { imagen });
+  },
+
+  async generarAvatar(descripcion: string): Promise<{ ok: boolean; perfil: PerfilDanonino }> {
+    return pedirJson('/agente/avatar/generar', 'POST', { descripcion });
+  },
+
+  async getGrupos(): Promise<{ ok: boolean; grupos: GrupoDanonino[] }> {
+    return pedirJson('/grupos');
+  },
+
+  async crearGrupo(nombre: string, invitados: string[]): Promise<{ ok: boolean; grupo: GrupoDetalle; invitados: { username: string; ok: boolean; error?: string }[] }> {
+    return pedirJson('/grupos', 'POST', { nombre, invitados });
+  },
+
+  async getGrupo(id: string): Promise<{ ok: boolean; grupo: GrupoDetalle }> {
+    return pedirJson(`/grupos/${id}`);
+  },
+
+  async getMensajesGrupo(id: string): Promise<{ ok: boolean; mensajes: GrupoMensaje[] }> {
+    return pedirJson(`/grupos/${id}/mensajes`);
+  },
+
+  async publicarEnGrupo(id: string, texto: string): Promise<{ ok: boolean; mensaje: GrupoMensaje }> {
+    return pedirJson(`/grupos/${id}/mensajes`, 'POST', { texto });
+  },
+
+  async invitarAGrupo(id: string, username: string): Promise<{ ok: boolean; error?: string }> {
+    return pedirJson(`/grupos/${id}/invitar`, 'POST', { username });
+  },
+
+  async responderInvitacion(id: string, aceptar: boolean): Promise<{ ok: boolean }> {
+    return pedirJson(`/grupos/${id}/invitacion`, 'POST', { aceptar });
+  },
+
+  async salirDeGrupo(id: string): Promise<{ ok: boolean }> {
+    return pedirJson(`/grupos/${id}/salir`, 'POST', {});
+  },
+
+  async cambiarMiAgente(id: string, activo: boolean): Promise<{ ok: boolean; grupo: GrupoDetalle }> {
+    return pedirJson(`/grupos/${id}/mi-agente`, 'PUT', { activo });
   },
 
   async getOneirosIniciativa(): Promise<{ ok: boolean; panel: OneirosPanelCiclo }> {

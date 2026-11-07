@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { miAvatarLocal } from '../services/api';
 
 export type AvatarState =
   | 'idle'
@@ -21,7 +22,7 @@ interface DanoninoAvatarProps {
   onClick?: () => void;
 }
 
-export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
+const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
   mode = 'idle',
   size = 'md',
   audioLevel = 0,
@@ -392,5 +393,23 @@ export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = ({
         />
       )}
     </div>
+  );
+};
+
+const TAMANOS_FOTO: Record<string, string> = { sm: 'w-9 h-9', md: 'w-14 h-14', lg: 'w-24 h-24', xl: 'w-36 h-36', hero: 'w-52 h-52' };
+
+/** Si esta cuenta eligió una imagen para su Danonino, esa es su cara en toda la app. */
+export const DanoninoAvatar: React.FC<DanoninoAvatarProps> = (props) => {
+  const foto = miAvatarLocal();
+  const [fallo, setFallo] = useState(false);
+  if (!foto || fallo) return <AvatarAnimado {...props} />;
+  return (
+    <img
+      src={foto}
+      alt="Tu Danonino"
+      onError={() => setFallo(true)}
+      onClick={props.onClick}
+      className={`${TAMANOS_FOTO[props.size || 'md']} rounded-full object-cover border border-danonino-border ${props.className || ''}`}
+    />
   );
 };

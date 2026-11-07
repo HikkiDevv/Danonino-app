@@ -8,6 +8,8 @@ import { LiveCallView } from './views/LiveCallView';
 import { MemoryView } from './views/MemoryView';
 import { ActivityView } from './views/ActivityView';
 import { OneirosView } from './views/OneirosView';
+import { GroupsView } from './views/GroupsView';
+import { guardarAvatarLocal } from './services/api';
 import { AuthView } from './views/AuthView';
 import { ProfileModal } from './components/ProfileModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -43,6 +45,7 @@ const AppLayout: React.FC = () => {
         api.getMe().catch(() => null)
       ]);
       if (st) setStatus(st);
+      api.getMiDanonino().then((r) => guardarAvatarLocal(r.perfil)).catch(() => {});
       if (me) {
         setCurrentUserState(me);
         saveCurrentUser(me);
@@ -173,6 +176,7 @@ const AppLayout: React.FC = () => {
           <Route path="/memory" element={<MemoryView />} />
           <Route path="/activity" element={<ActivityView />} />
           <Route path="/oneiros" element={<OneirosView />} />
+          <Route path="/grupos" element={<GroupsView />} />
         </Routes>
       </main>
 

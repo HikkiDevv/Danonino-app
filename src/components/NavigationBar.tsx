@@ -5,7 +5,8 @@ import {
   MessageSquare,
   Brain,
   Moon,
-  PhoneCall
+  PhoneCall,
+  Users
 } from 'lucide-react';
 
 export const NavigationBar: React.FC = () => {
@@ -20,6 +21,7 @@ export const NavigationBar: React.FC = () => {
     { to: '/', label: 'Inicio', icon: Sparkles },
     { to: '/chat', label: 'Chat', icon: MessageSquare },
     { to: '/live', label: 'Live', icon: PhoneCall, isLive: true },
+    { to: '/grupos', label: 'Grupos', icon: Users },
     { to: '/memory', label: 'Memoria', icon: Brain },
     { to: '/activity', label: 'Actividad', icon: Moon }
   ];
