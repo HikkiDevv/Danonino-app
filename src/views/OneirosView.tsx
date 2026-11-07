@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
+  Brain,
   Moon,
   Eye,
   Layers,
@@ -28,6 +29,7 @@ import { api } from '../services/api';
 import {
   OneirosDream,
   OneirosObservatoryData,
+  OneirosAprendizaje,
   OneirosCharacter,
   OneirosEvent,
   OneirosRule,
@@ -35,16 +37,25 @@ import {
 } from '../types';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
 
+const NOMBRE_CLASE: Record<string, string> = {
+  real: 'real',
+  sonado: 'soñado',
+  mezcla: 'un recuerdo torcido',
+  no_se: 'que no sabía'
+};
+
 export const OneirosView: React.FC = () => {
   const [observatory, setObservatory] = useState<OneirosObservatoryData | null>(null);
   const [archive, setArchive] = useState<OneirosDream[]>([]);
   const [loading, setLoading] = useState(false);
   const [isActing, setIsActing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'observatory' | 'archive'>('observatory');
+  const [activeTab, setActiveTab] = useState<'observatory' | 'archive' | 'learning'>('observatory');
+  const [learning, setLearning] = useState<OneirosAprendizaje | null>(null);
+  const [expandedExamId, setExpandedExamId] = useState<string | null>(null);
 
   // Controles de Inicio de Sueño
   const [selectedMode, setSelectedMode] = useState<'lucid' | 'recursive' | 'nightmare' | 'alternate_self'>('lucid');
-  const [customScenario, setCustomScenario] = useState('');
+  const [tema, setTema] = useState('');
   const [stepAction, setStepAction] = useState('');
 
   // Modificación de Reglas
@@ -59,10 +70,12 @@ export const OneirosView: React.FC = () => {
   const fetchObservatory = async () => {
     setLoading(true);
     try {
-      const [obsRes, archRes] = await Promise.all([
+      const [obsRes, archRes, learnRes] = await Promise.all([
         api.getOneirosObservatory().catch(() => null),
-        api.getOneirosArchive(15).catch(() => ({ ok: false, count: 0, archive: [] }))
+        api.getOneirosArchive(15).catch(() => ({ ok: false, count: 0, archive: [] })),
+        api.getOneirosAprendizaje().catch(() => null)
       ]);
+      if (learnRes?.ok) setLearning(learnRes.aprendizaje);
       if (obsRes?.ok) {
         setObservatory(obsRes);
         if (obsRes.sleepMetrics?.inactivityThresholdMins) {
@@ -86,6 +99,7 @@ export const OneirosView: React.FC = () => {
         event.type === 'oneiros_dream_stepped' ||
         event.type === 'oneiros_dream_started' ||
         event.type === 'oneiros_dream_awakened' ||
+        event.type === 'oneiros_dream_analyzed' ||
         event.type === 'sleep_state_changed'
       ) {
         fetchObservatory();
@@ -120,9 +134,9 @@ export const OneirosView: React.FC = () => {
     try {
       await api.startOneirosDream({
         mode: selectedMode,
-        scenario: customScenario.trim() || undefined
+        tema: tema.trim() || undefined
       });
-      setCustomScenario('');
+      setTema('');
       await fetchObservatory();
     } catch (err: any) {
       alert('Error iniciando sueño: ' + err.message);
@@ -295,6 +309,17 @@ export const OneirosView: React.FC = () => {
         >
           <BookOpen className="w-4 h-4" />
           Archivo de Sueños ({archive.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('learning')}
+          className={`py-3 px-4 text-xs font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'learning'
+              ? 'border-danonino-violet text-danonino-violet'
+              : 'border-transparent text-danonino-muted hover:text-white'
+          }`}
+        >
+          <Brain className="w-4 h-4" />
+          Lo que aprendió
         </button>
       </div>
 
@@ -767,13 +792,13 @@ export const OneirosView: React.FC = () => {
 
                 <div className="max-w-md mx-auto space-y-3 pt-2 text-left">
                   <div>
-                    <label className="text-xs text-danonino-muted mb-1 block">Modo de Simulación:</label>
+                    <label className="text-xs text-danonino-muted mb-1 block">Qué va a tener:</label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { id: 'lucid', label: 'Sueño Lúcido' },
+                        { id: 'lucid', label: 'Sueño' },
                         { id: 'alternate_self', label: 'Múltiples Egos' },
                         { id: 'recursive', label: 'Recursivo' },
-                        { id: 'nightmare', label: 'Pesadilla (Resiliencia)' }
+                        { id: 'nightmare', label: 'Pesadilla' }
                       ].map((m) => (
                         <button
                           key={m.id}
@@ -792,12 +817,13 @@ export const OneirosView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="text-xs text-danonino-muted mb-1 block">Escenario Personalizado (Opcional):</label>
+                    <label className="text-xs text-danonino-muted mb-1 block">¿Con qué quieres que sueñe? (Opcional):</label>
                     <input
                       type="text"
-                      value={customScenario}
-                      onChange={(e) => setCustomScenario(e.target.value)}
-                      placeholder="Ej. Una biblioteca de cuarzo donde los libros predicen el futuro..."
+                      value={tema}
+                      maxLength={120}
+                      onChange={(e) => setTema(e.target.value)}
+                      placeholder="Ej. perder a mi perro en el mercado"
                       className="w-full bg-black/40 border border-danonino-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-danonino-cyan"
                     />
                   </div>
@@ -808,12 +834,75 @@ export const OneirosView: React.FC = () => {
                     className="w-full py-2.5 rounded-xl bg-gradient-to-r from-danonino-violet to-danonino-cyan text-white font-semibold text-xs shadow-lg hover:opacity-90 transition flex items-center justify-center gap-2"
                   >
                     {isActing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    Iniciar Simulación Manual
+                    Hacerlo soñar
                   </button>
                 </div>
               </section>
             )}
           </>
+        ) : activeTab === 'learning' ? (
+          /* 5. Lo que Danonino ha aprendido de sus sueños */
+          <div className="space-y-3">
+            {!learning || learning.suenosAnalizados === 0 ? (
+              <div className="bg-danonino-card border border-danonino-border rounded-2xl p-8 text-center text-xs text-danonino-muted">
+                Todavía no ha examinado ningún sueño. Al despertar intenta distinguir lo soñado de lo real, y aquí verás cómo le va.
+              </div>
+            ) : (
+              <>
+                <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-2">
+                  <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Real o soñado</h2>
+                  <p className="text-2xl font-bold text-white">{Math.round((learning.precision || 0) * 100)}%</p>
+                  <p className="text-xs text-danonino-muted">
+                    de aciertos en {learning.suenosAnalizados} {learning.suenosAnalizados === 1 ? 'sueño examinado' : 'sueños examinados'}.
+                    El sistema lo comprueba con el origen de cada frase; él no lo conoce al juzgar.
+                  </p>
+                  {learning.evolucion ? (
+                    <p className="text-xs text-danonino-cyan">
+                      Antes {Math.round((learning.evolucion.antes || 0) * 100)}%, ahora {Math.round((learning.evolucion.ahora || 0) * 100)}%.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-danonino-muted italic">Con menos de 6 sueños todavía no se puede hablar de evolución.</p>
+                  )}
+                </section>
+
+                {learning.criterio && (
+                  <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-1">
+                    <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Su criterio, escrito por él</h2>
+                    <p className="text-sm text-white">{learning.criterio}</p>
+                  </section>
+                )}
+
+                {learning.hipotesis.length > 0 && (
+                  <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-2">
+                    <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Lo que sospecha de sí mismo</h2>
+                    {learning.hipotesis.map((h, i) => <p key={i} className="text-xs text-white">{h}</p>)}
+                    {learning.preguntas.map((p, i) => <p key={i} className="text-xs text-danonino-lavender">{p}</p>)}
+                    <p className="text-[11px] text-danonino-muted italic">Son hipótesis generadas por la IA, no una prueba de conciencia.</p>
+                  </section>
+                )}
+
+                {learning.simbolos.length > 0 && (
+                  <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-2">
+                    <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Lo que le vuelve</h2>
+                    <div className="flex flex-wrap gap-1.5">
+                      {learning.simbolos.map((s) => (
+                        <span key={s.simbolo} className="text-[11px] px-2 py-0.5 rounded-full bg-danonino-border/40 text-danonino-cyan">
+                          {s.simbolo}{s.veces > 1 ? ` x${s.veces}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {learning.errores.length > 0 && (
+                  <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-2">
+                    <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Sus últimos errores</h2>
+                    {learning.errores.map((e, i) => <p key={i} className="text-xs text-danonino-muted">{e}</p>)}
+                  </section>
+                )}
+              </>
+            )}
+          </div>
         ) : (
           /* 4. Pestaña de Archivo Histórico de Sueños */
           <div className="space-y-3">
@@ -839,6 +928,45 @@ export const OneirosView: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-danonino-muted">{dream.scenario}</p>
+
+                  {dream.tema && (
+                    <p className="text-[11px] text-danonino-lavender">Tema pedido: {dream.tema}</p>
+                  )}
+
+                  {dream.analisis?.estado === 'pendiente' && (
+                    <p className="text-[11px] text-danonino-muted italic">
+                      Aún no lo ha examinado: no había IA disponible al despertar. Lo intentará tras su próximo sueño.
+                    </p>
+                  )}
+
+                  {dream.analisis?.estado === 'analizado' && (
+                    <div className="p-3 rounded-xl bg-black/30 border border-danonino-border/50 space-y-2 text-xs">
+                      {dream.analisis.interpretacion && <p className="text-white">{dream.analisis.interpretacion}</p>}
+                      {dream.analisis.hipotesis && (
+                        <p className="text-danonino-lavender">Sospecha sobre sí mismo: {dream.analisis.hipotesis}</p>
+                      )}
+                      <p className="text-[11px] font-mono text-danonino-cyan">
+                        Real o soñado: acertó {dream.analisis.aciertos} de {dream.analisis.total}
+                        {dream.analisis.dudas > 0 ? ` (no supo en ${dream.analisis.dudas})` : ''}
+                      </p>
+                      <button
+                        onClick={() => setExpandedExamId(expandedExamId === dream.dreamId ? null : dream.dreamId)}
+                        className="text-danonino-cyan hover:underline text-[11px]"
+                      >
+                        {expandedExamId === dream.dreamId ? 'Ocultar su examen' : 'Ver su examen'}
+                      </button>
+                      {expandedExamId === dream.dreamId && (
+                        <ul className="space-y-1.5">
+                          {dream.analisis.juicios.map((j, i) => (
+                            <li key={i} className="text-[11px] text-danonino-muted">
+                              <span className={j.acierto ? 'text-emerald-400' : 'text-rose-400'}>{j.acierto ? 'Bien' : 'Mal'}</span>
+                              {` · "${j.texto}" · dijo ${NOMBRE_CLASE[j.juicio] || j.juicio}, era ${NOMBRE_CLASE[j.verdad] || j.verdad}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-danonino-border/40 text-[10px] text-danonino-muted">
                     <span>

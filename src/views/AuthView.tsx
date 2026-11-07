@@ -13,6 +13,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, onOpenSetti
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [codigoInvitacion, setCodigoInvitacion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, onOpenSetti
 
     try {
       if (isRegister) {
-        const res = await api.register(username.trim(), password, displayName.trim());
+        const res = await api.register(username.trim(), password, displayName.trim(), codigoInvitacion.trim());
         onAuthenticated(res.user);
       } else {
         const res = await api.login(username.trim(), password);
@@ -92,6 +93,23 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, onOpenSetti
 
           {/* Formulario */}
           <form onSubmit={handleSubmit} className="space-y-3.5">
+            {isRegister && (
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Código de invitación
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  value={codigoInvitacion}
+                  onChange={(e) => setCodigoInvitacion(e.target.value)}
+                  placeholder="Te lo da quien administra Danonino"
+                  className="w-full bg-danonino-card text-xs text-slate-100 px-3 py-2.5 rounded-xl border border-danonino-border focus:outline-none focus:border-danonino-cyan/60"
+                />
+              </div>
+            )}
+
             {isRegister && (
               <div>
                 <label className="block text-[11px] font-semibold text-slate-300 mb-1">

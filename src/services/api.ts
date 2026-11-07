@@ -12,11 +12,12 @@ import {
   ActivityEvent,
   OneirosDream,
   OneirosRule,
-  OneirosObservatoryData
+  OneirosObservatoryData,
+  OneirosAprendizaje
 } from '../types';
 
-// URL pública mundial permanente vía Cloudflare Tunnel para que cualquier persona con el APK pueda conectarse
-export const DEFAULT_PUBLIC_API_URL = 'https://administrator-opinions-duty-naval.trycloudflare.com/api';
+// Servicio de Danonino en Railway
+export const DEFAULT_PUBLIC_API_URL = 'https://danonino-production.up.railway.app/api';
 
 export const getBaseApiUrl = (): string => {
   const custom = localStorage.getItem('danonino_api_url');
@@ -80,11 +81,11 @@ export const api = {
   // AUTENTICACIÓN Y PERFIL
   // ==========================================
 
-  async register(username: string, password: string, displayName?: string): Promise<AuthResponse> {
+  async register(username: string, password: string, displayName?: string, codigoInvitacion?: string): Promise<AuthResponse> {
     const res = await fetch(`${getBaseApiUrl()}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, displayName })
+      body: JSON.stringify({ username, password, displayName, codigoInvitacion })
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
@@ -401,7 +402,7 @@ export const api = {
     return res.json();
   },
 
-  async startOneirosDream(options: { mode?: string; scenario?: string; title?: string } = {}): Promise<{ ok: boolean; dream: OneirosDream }> {
+  async startOneirosDream(options: { mode?: string; scenario?: string; title?: string; tema?: string } = {}): Promise<{ ok: boolean; dream: OneirosDream }> {
     const res = await fetch(`${getBaseApiUrl()}/oneiros/start`, {
       method: 'POST',
       headers: buildHeaders(),
@@ -468,6 +469,14 @@ export const api = {
       body: JSON.stringify({ mode })
     });
     if (!res.ok) throw new Error(`Error iniciando sueño forzado: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getOneirosAprendizaje(): Promise<{ ok: boolean; aprendizaje: OneirosAprendizaje }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/aprendizaje`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error consultando el aprendizaje de Oneiros: ${res.statusText}`);
     return res.json();
   },
 

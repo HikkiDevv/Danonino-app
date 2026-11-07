@@ -196,7 +196,41 @@ export interface OneirosEvent {
   timestamp: string;
 }
 
+export interface OneirosJuicio {
+  texto: string;
+  verdad: string;
+  juicio: string;
+  acierto: boolean;
+  porQue?: string;
+}
+
+export interface OneirosAnalisis {
+  estado: 'pendiente' | 'analizado';
+  interpretacion: string | null;
+  simbolos: string[];
+  hipotesis: string | null;
+  pregunta: string | null;
+  criterio: string | null;
+  aciertos: number;
+  dudas: number;
+  total: number;
+  juicios: OneirosJuicio[];
+}
+
+export interface OneirosAprendizaje {
+  suenosAnalizados: number;
+  precision: number | null;
+  evolucion: { antes: number | null; ahora: number | null } | null;
+  criterio: string | null;
+  hipotesis: string[];
+  preguntas: string[];
+  simbolos: { simbolo: string; veces: number }[];
+  errores: string[];
+}
+
 export interface OneirosDream {
+  tema?: string | null;
+  analisis?: OneirosAnalisis | null;
   dreamId: string;
   userId: string;
   parentDreamId?: string | null;
