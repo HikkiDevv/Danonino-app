@@ -13,7 +13,9 @@ import {
   OneirosDream,
   OneirosRule,
   OneirosObservatoryData,
-  OneirosAprendizaje
+  OneirosAprendizaje,
+  OneirosPanelCiclo,
+  OneirosCicloConfig
 } from '../types';
 
 // Servicio de Danonino en Railway
@@ -479,6 +481,24 @@ export const api = {
       body: JSON.stringify({ mode })
     });
     if (!res.ok) throw new Error(`Error iniciando sueño forzado: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getOneirosIniciativa(): Promise<{ ok: boolean; panel: OneirosPanelCiclo }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/iniciativa`, {
+      headers: buildHeaders()
+    });
+    if (!res.ok) throw new Error(`Error consultando la iniciativa de Oneiros: ${res.statusText}`);
+    return res.json();
+  },
+
+  async guardarConfigCiclo(cambios: Partial<OneirosCicloConfig>): Promise<{ ok: boolean; config: OneirosCicloConfig }> {
+    const res = await fetch(`${getBaseApiUrl()}/oneiros/iniciativa/config`, {
+      method: 'PUT',
+      headers: buildHeaders(),
+      body: JSON.stringify(cambios)
+    });
+    if (!res.ok) throw new Error(`Error guardando la configuración de Oneiros: ${res.statusText}`);
     return res.json();
   },
 

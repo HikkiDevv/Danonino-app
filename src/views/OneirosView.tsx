@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Brain,
+  Lightbulb,
   Moon,
   Eye,
   Layers,
@@ -30,6 +31,9 @@ import {
   OneirosDream,
   OneirosObservatoryData,
   OneirosAprendizaje,
+  OneirosPanelCiclo,
+  OneirosCicloConfig,
+  OneirosHipotesis,
   OneirosCharacter,
   OneirosEvent,
   OneirosRule,
@@ -44,12 +48,50 @@ const NOMBRE_CLASE: Record<string, string> = {
   no_se: 'que no sabía'
 };
 
+const NOMBRE_FASE: Record<string, string> = {
+  observacion: 'observación',
+  asociacion: 'asociación',
+  sueno: 'sueño',
+  introspeccion: 'introspección',
+  curiosidad: 'curiosidad',
+  iniciativa: 'iniciativa',
+  accion: 'acción',
+  aprendizaje: 'aprendizaje',
+  continuidad: 'continuidad'
+};
+
+const NOMBRE_ESTADO: Record<string, string> = {
+  decidida: 'Decidida',
+  en_curso: 'En curso',
+  completada: 'Terminada',
+  fallida: 'Falló'
+};
+
+const BloqueCiclo: React.FC<{ titulo: string; children: React.ReactNode }> = ({ titulo, children }) => (
+  <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-2.5 text-xs">
+    <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">{titulo}</h2>
+    {children}
+  </section>
+);
+
+const FilaHipotesis: React.FC<{ h: OneirosHipotesis }> = ({ h }) => (
+  <div className="space-y-0.5">
+    <p className="text-white">{h.texto}</p>
+    <p className={`text-[11px] ${h.estado === 'confirmada' ? 'text-emerald-400' : h.estado === 'refutada' ? 'text-rose-400' : 'text-danonino-muted'}`}>
+      {h.estado === 'abierta'
+        ? 'Sin comprobar: faltan datos nuevos'
+        : `${h.estado === 'confirmada' ? 'Los datos la respaldan' : 'Los datos la refutan'}: ${Math.round((h.medido || 0) * 100)}% con ${h.muestra} frases`}
+    </p>
+  </div>
+);
+
 export const OneirosView: React.FC = () => {
   const [observatory, setObservatory] = useState<OneirosObservatoryData | null>(null);
   const [archive, setArchive] = useState<OneirosDream[]>([]);
   const [loading, setLoading] = useState(false);
   const [isActing, setIsActing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'observatory' | 'archive' | 'learning'>('observatory');
+  const [activeTab, setActiveTab] = useState<'observatory' | 'archive' | 'learning' | 'initiative'>('observatory');
+  const [panel, setPanel] = useState<OneirosPanelCiclo | null>(null);
   const [learning, setLearning] = useState<OneirosAprendizaje | null>(null);
   const [expandedExamId, setExpandedExamId] = useState<string | null>(null);
 
@@ -70,11 +112,13 @@ export const OneirosView: React.FC = () => {
   const fetchObservatory = async () => {
     setLoading(true);
     try {
-      const [obsRes, archRes, learnRes] = await Promise.all([
+      const [obsRes, archRes, learnRes, panelRes] = await Promise.all([
         api.getOneirosObservatory().catch(() => null),
         api.getOneirosArchive(15).catch(() => ({ ok: false, count: 0, archive: [] })),
-        api.getOneirosAprendizaje().catch(() => null)
+        api.getOneirosAprendizaje().catch(() => null),
+        api.getOneirosIniciativa().catch(() => null)
       ]);
+      if (panelRes?.ok) setPanel(panelRes.panel);
       if (learnRes?.ok) setLearning(learnRes.aprendizaje);
       if (obsRes?.ok) {
         setObservatory(obsRes);
@@ -126,6 +170,15 @@ export const OneirosView: React.FC = () => {
       alert('Error controlando simulación viva: ' + err.message);
     } finally {
       setIsActing(false);
+    }
+  };
+
+  const handleConfigCiclo = async (cambios: Partial<OneirosCicloConfig>) => {
+    try {
+      await api.guardarConfigCiclo(cambios);
+      await fetchObservatory();
+    } catch (err: any) {
+      alert('No se pudo guardar: ' + err.message);
     }
   };
 
@@ -287,7 +340,7 @@ export const OneirosView: React.FC = () => {
       </header>
 
       {/* 2. Pestañas de Navegación: Observatorio vs Archivo */}
-      <div className="flex border-b border-danonino-border px-4 bg-danonino-card/40">
+      <div className="flex border-b border-danonino-border px-4 bg-danonino-card/40 overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveTab('observatory')}
           className={`py-3 px-4 text-xs font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -321,12 +374,39 @@ export const OneirosView: React.FC = () => {
           <Brain className="w-4 h-4" />
           Lo que aprendió
         </button>
+        <button
+          onClick={() => setActiveTab('initiative')}
+          className={`py-3 px-4 text-xs font-medium border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'initiative'
+              ? 'border-danonino-cyan text-danonino-cyan'
+              : 'border-transparent text-danonino-muted hover:text-white'
+          }`}
+        >
+          <Lightbulb className="w-4 h-4" />
+          Iniciativa
+        </button>
       </div>
 
       {/* 3. Panel de Contenido Principal */}
       <main className="flex-1 p-4 max-w-3xl mx-auto w-full space-y-4">
         {activeTab === 'observatory' ? (
           <>
+            {/* Estado del ciclo cognitivo: solo datos medidos */}
+            {panel?.config.activo && (
+              <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 shadow-lg space-y-1 text-xs">
+                <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Ciclo de Oneiros</h2>
+                <p className="text-white">
+                  {panel.estado.fase
+                    ? `Fase ${panel.estado.faseIndice} de ${panel.estado.fasesTotales}: ${NOMBRE_FASE[panel.estado.fase] || panel.estado.fase}`
+                    : 'Entre ciclos'}
+                  {panel.estado.aplazadoHasta ? ' (en espera de IA)' : ''}
+                </p>
+                <p className="text-danonino-muted">
+                  {panel.estado.ciclosTerminados} ciclos terminados · {panel.curiosidades.length} preguntas abiertas · {panel.estado.llamadasHoy} de {panel.estado.limiteDiario} llamadas hoy
+                </p>
+              </section>
+            )}
+
             {/* A. Tarjeta de Estado del Ciclo Autónomo de Sueño */}
             <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 shadow-lg relative overflow-hidden">
               <div className="flex items-center justify-between gap-4">
@@ -840,6 +920,115 @@ export const OneirosView: React.FC = () => {
               </section>
             )}
           </>
+        ) : activeTab === 'initiative' ? (
+          /* 6. Qué investiga por su cuenta, qué decidió y por qué */
+          <div className="space-y-3">
+            <section className="bg-danonino-card border border-danonino-border rounded-2xl p-4 space-y-3 text-xs">
+              <h2 className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Autonomía</h2>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={Boolean(panel?.config.activo)}
+                  onChange={(e) => handleConfigCiclo({ activo: e.target.checked })}
+                />
+                <span className="text-white">
+                  Dejar que piense por su cuenta
+                  <span className="block text-danonino-muted">Cada cierto tiempo repasa lo vivido, se hace preguntas y las investiga. Gasta cuota de IA, con un tope diario.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={Boolean(panel?.config.comunicar)}
+                  onChange={(e) => handleConfigCiclo({ comunicar: e.target.checked })}
+                />
+                <span className="text-white">
+                  Dejar que me escriba por WhatsApp
+                  <span className="block text-danonino-muted">
+                    Solo si tienes WhatsApp vinculado, y como máximo {panel?.config.mensajesSemana ?? 2} veces por semana, una al día y nunca entre las {panel?.config.silencioDesde ?? 22}:00 y las {panel?.config.silencioHasta ?? 9}:00.
+                  </span>
+                </span>
+              </label>
+              {panel?.estado.ultimoCiclo?.resumen && (
+                <p className="text-danonino-muted border-t border-danonino-border/40 pt-2">Último ciclo: {panel.estado.ultimoCiclo.resumen}</p>
+              )}
+            </section>
+
+            {!panel || (panel.decisiones.length === 0 && panel.curiosidades.length === 0) ? (
+              <div className="bg-danonino-card border border-danonino-border rounded-2xl p-8 text-center text-xs text-danonino-muted">
+                Aún no ha hecho nada por su cuenta. Activa la primera opción y el primer ciclo empezará en un minuto.
+              </div>
+            ) : (
+              <>
+                {panel.mensajes.length > 0 && (
+                  <BloqueCiclo titulo="Lo que quiere contarte">
+                    {panel.mensajes.map((m) => (
+                      <div key={m.id} className="space-y-0.5">
+                        <p className="text-white">{m.texto}</p>
+                        <p className="text-[11px] text-danonino-muted">
+                          {m.estado === 'enviado' ? 'Enviado por WhatsApp' : m.motivo || 'Esperando buen momento'}
+                        </p>
+                      </div>
+                    ))}
+                  </BloqueCiclo>
+                )}
+
+                {panel.curiosidades.length > 0 && (
+                  <BloqueCiclo titulo="Preguntas pendientes">
+                    {panel.curiosidades.map((c) => (
+                      <div key={c.id}>
+                        <p className="text-white">{c.pregunta}</p>
+                        <p className="text-[11px] text-danonino-muted">Nace de: {c.motivo} · Prioridad {Math.round(c.prioridad * 100)}%</p>
+                      </div>
+                    ))}
+                  </BloqueCiclo>
+                )}
+
+                {panel.iniciativas.length > 0 && (
+                  <BloqueCiclo titulo="Investigaciones y objetivos">
+                    {panel.iniciativas.map((i) => (
+                      <div key={i.id} className="space-y-0.5">
+                        <p className="text-white">{i.objetivo}</p>
+                        <p className="text-[11px] text-danonino-cyan">{NOMBRE_ESTADO[i.estado] || i.estado} · {i.accion === 'investigar_enciclopedia' ? 'Consultó la enciclopedia' : 'Revisó sus propios datos'}</p>
+                        <p className="text-[11px] text-danonino-muted">Por qué: {i.justificacion}</p>
+                        {i.aprendizaje && <p className="text-[11px] text-danonino-lavender">Aprendió: {i.aprendizaje}</p>}
+                      </div>
+                    ))}
+                  </BloqueCiclo>
+                )}
+
+                {panel.experimentos.length > 0 && (
+                  <BloqueCiclo titulo="Experimentos sobre sí mismo">
+                    {panel.experimentos.map((h) => <FilaHipotesis key={h.id} h={h} />)}
+                  </BloqueCiclo>
+                )}
+
+                {panel.resueltas.length > 0 && (
+                  <BloqueCiclo titulo="Descubrimientos">
+                    {panel.resueltas.map((c) => (
+                      <div key={c.id}>
+                        <p className="text-white">{c.pregunta}</p>
+                        <p className="text-[11px] text-danonino-lavender">{c.respuesta}</p>
+                      </div>
+                    ))}
+                  </BloqueCiclo>
+                )}
+
+                {panel.decisiones.length > 0 && (
+                  <BloqueCiclo titulo="Historial de decisiones">
+                    {panel.decisiones.map((d) => (
+                      <p key={d.id} className="text-[11px] text-danonino-muted">
+                        <span className="text-white">{d.decision}</span>{d.razon ? ` · ${d.razon}` : ''}
+                        <span className="block font-mono">{new Date(d.fecha).toLocaleString('es-PE')}</span>
+                      </p>
+                    ))}
+                  </BloqueCiclo>
+                )}
+              </>
+            )}
+          </div>
         ) : activeTab === 'learning' ? (
           /* 5. Lo que Danonino ha aprendido de sus sueños */
           <div className="space-y-3">
@@ -892,6 +1081,31 @@ export const OneirosView: React.FC = () => {
                       ))}
                     </div>
                   </section>
+                )}
+
+                {panel && panel.experimentos.length > 0 && (
+                  <BloqueCiclo titulo="Sus hipótesis, comprobadas con datos">
+                    {panel.experimentos.map((h) => <FilaHipotesis key={h.id} h={h} />)}
+                  </BloqueCiclo>
+                )}
+
+                {panel && panel.aprendizajes.length > 0 && (
+                  <BloqueCiclo titulo="Lo que sacó de lo que intentó">
+                    {panel.aprendizajes.map((a) => (
+                      <div key={a.id} className="space-y-0.5">
+                        <p className="text-white">{a.intento}</p>
+                        {a.esperaba && <p className="text-[11px] text-danonino-muted">Esperaba: {a.esperaba}</p>}
+                        {a.ocurrio && <p className="text-[11px] text-danonino-muted">Ocurrió: {a.ocurrio}</p>}
+                        {a.aprendio && <p className="text-[11px] text-danonino-lavender">Aprendió: {a.aprendio}</p>}
+                      </div>
+                    ))}
+                  </BloqueCiclo>
+                )}
+
+                {panel && panel.limitaciones.length > 0 && (
+                  <BloqueCiclo titulo="Límites que ha notado">
+                    {panel.limitaciones.map((l) => <p key={l.id} className="text-xs text-danonino-muted">{l.texto}</p>)}
+                  </BloqueCiclo>
                 )}
 
                 {learning.errores.length > 0 && (
@@ -979,6 +1193,17 @@ export const OneirosView: React.FC = () => {
                       {expandedJournalId === dream.dreamId ? 'Ocultar diario' : 'Ver diario de vigilia'}
                     </button>
                   </div>
+
+                  {dream.asociaciones && dream.asociaciones.length > 0 && (
+                    <div className="p-3 rounded-xl bg-black/30 border border-danonino-border/50 space-y-1.5">
+                      <p className="text-[11px] uppercase font-mono tracking-wider text-danonino-muted">Asociaciones</p>
+                      {dream.asociaciones.map((a, i) => (
+                        <p key={i} className="text-[11px] text-danonino-muted">
+                          {`"${a.a_texto}" y "${a.b_texto}" · ${a.vinculo}`}
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   {expandedJournalId === dream.dreamId && dream.narrativeJournal && (
                     <div className="mt-3 p-3 rounded-xl bg-black/40 border border-danonino-border/50 text-xs font-mono whitespace-pre-wrap text-danonino-lavender leading-relaxed">

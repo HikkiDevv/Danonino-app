@@ -228,7 +228,65 @@ export interface OneirosAprendizaje {
   errores: string[];
 }
 
+export interface OneirosAsociacion {
+  a_origen: string;
+  a_texto: string;
+  b_origen: string;
+  b_texto: string;
+  vinculo: string;
+  tipo: 'evidente' | 'inesperada';
+}
+
+export interface OneirosHipotesis {
+  id: string;
+  texto: string;
+  estado: string;
+  medido: number | null;
+  muestra: number | null;
+}
+
+export interface OneirosCicloConfig {
+  activo: boolean;
+  comunicar: boolean;
+  intervaloHoras: number;
+  mensajesSemana: number;
+  silencioDesde: number;
+  silencioHasta: number;
+}
+
+export interface OneirosCuriosidad {
+  id: string;
+  pregunta: string;
+  motivo: string;
+  prioridad: number;
+  respuesta?: string;
+}
+
+export interface OneirosPanelCiclo {
+  config: OneirosCicloConfig;
+  estado: {
+    fase: string | null;
+    faseIndice: number;
+    fasesTotales: number;
+    aplazadoHasta: string | null;
+    ciclosTerminados: number;
+    ultimoCiclo: { fin: string | null; estado: string; resumen: string | null; llamadas: number } | null;
+    proximoCiclo: string | null;
+    llamadasHoy: number;
+    limiteDiario: number;
+  };
+  curiosidades: OneirosCuriosidad[];
+  resueltas: OneirosCuriosidad[];
+  iniciativas: { id: string; objetivo: string; estado: string; accion: string; justificacion: string; aprendizaje: string | null }[];
+  experimentos: OneirosHipotesis[];
+  limitaciones: { id: string; texto: string }[];
+  aprendizajes: { id: string; intento: string; esperaba: string | null; ocurrio: string | null; aprendio: string | null }[];
+  mensajes: { id: string; texto: string; estado: string; motivo: string | null }[];
+  decisiones: { id: number; decision: string; razon: string | null; fecha: string }[];
+}
+
 export interface OneirosDream {
+  asociaciones?: OneirosAsociacion[];
   tema?: string | null;
   analisis?: OneirosAnalisis | null;
   dreamId: string;
