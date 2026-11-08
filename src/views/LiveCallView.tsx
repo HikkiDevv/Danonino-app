@@ -58,6 +58,14 @@ export const LiveCallView: React.FC = () => {
   const cameraManagerRef = useRef<CameraManager | null>(null);
   const screenManagerRef = useRef<ScreenShareManager | null>(null);
 
+  // El micrófono guarda el callback del primer render: sin refs, vería la cámara siempre apagada
+  const cameraActiveRef = useRef(false);
+  const screenActiveRef = useRef(false);
+  const isMicMutedRef = useRef(false);
+  useEffect(() => { cameraActiveRef.current = cameraActive; }, [cameraActive]);
+  useEffect(() => { screenActiveRef.current = screenActive; }, [screenActive]);
+  useEffect(() => { isMicMutedRef.current = isMicMuted; }, [isMicMuted]);
+
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const canvasWaveformRef = useRef<HTMLCanvasElement | null>(null);
   const sessionIdRef = useRef<string>('live_' + Date.now());
@@ -187,7 +195,7 @@ export const LiveCallView: React.FC = () => {
 
   // Procesar segmento de voz recibido del micrófono
   const handleIncomingVoiceSegment = async (audioBase64: string) => {
-    if (isInteractingRef.current || isMicMuted) return;
+    if (isInteractingRef.current || isMicMutedRef.current) return;
     isInteractingRef.current = true;
     setCallStatus('thinking');
 
@@ -195,10 +203,10 @@ export const LiveCallView: React.FC = () => {
       let imageBase64: string | undefined = undefined;
       let streamType = 'voice_only';
 
-      if (cameraActive && cameraManagerRef.current) {
+      if (cameraActiveRef.current && cameraManagerRef.current) {
         imageBase64 = cameraManagerRef.current.captureCompressedFrame(true) || undefined;
         streamType = 'camera';
-      } else if (screenActive && screenManagerRef.current) {
+      } else if (screenActiveRef.current && screenManagerRef.current) {
         imageBase64 = (await screenManagerRef.current.captureFrameAsync()) || undefined;
         streamType = 'screen';
       }
