@@ -9,6 +9,11 @@ import { MemoryView } from './views/MemoryView';
 import { ActivityView } from './views/ActivityView';
 import { OneirosView } from './views/OneirosView';
 import { GroupsView } from './views/GroupsView';
+import { CorazonView } from './views/CorazonView';
+import { AprendizajeView } from './views/AprendizajeView';
+import { LaboratorioView } from './views/LaboratorioView';
+import { StickersView } from './views/StickersView';
+import { DuenaView } from './views/DuenaView';
 import { guardarAvatarLocal } from './services/api';
 import { AuthView } from './views/AuthView';
 import { ProfileModal } from './components/ProfileModal';
@@ -32,6 +37,8 @@ const AppLayout: React.FC = () => {
   });
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  // Solo la dueña ve la sección de WhatsApp (el servidor lo confirma; aquí solo se decide qué mostrar)
+  const [esDuena, setEsDuena] = useState(() => localStorage.getItem('danonino_es_duena') === '1');
   const [showProfile, setShowProfile] = useState(false);
   const [customApiUrl, setCustomApiUrl] = useState(getBaseApiUrl());
 
@@ -46,6 +53,7 @@ const AppLayout: React.FC = () => {
       ]);
       if (st) setStatus(st);
       api.getMiDanonino().then((r) => guardarAvatarLocal(r.perfil)).catch(() => {});
+      api.getCorazon().then((c) => { setEsDuena(Boolean(c.esDuena)); localStorage.setItem('danonino_es_duena', c.esDuena ? '1' : '0'); }).catch(() => {});
       if (me) {
         setCurrentUserState(me);
         saveCurrentUser(me);
@@ -76,6 +84,8 @@ const AppLayout: React.FC = () => {
     // Limpieza estricta de memoria local del chat
     localStorage.removeItem('danonino_local_chat');
     localStorage.removeItem('danonino_active_conv');
+    localStorage.removeItem('danonino_es_duena');
+    setEsDuena(false);
   };
 
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -155,7 +165,7 @@ const AppLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-danonino-bg text-slate-100 flex flex-col font-sans selection:bg-danonino-violet">
+    <div className="min-h-screen text-slate-100 flex flex-col font-sans">
       {/* Cabecera Superior Fija con Perfil de Usuario */}
       {!isLiveView && (
         <Header
@@ -170,18 +180,23 @@ const AppLayout: React.FC = () => {
       {/* Contenido Principal con Rutas */}
       <main className="flex-1 w-full max-w-md mx-auto">
         <Routes>
-          <Route path="/" element={<HomeView status={status} onRefresh={refreshState} />} />
+          <Route path="/" element={<HomeView status={status} onRefresh={refreshState} esDuena={esDuena} />} />
           <Route path="/chat" element={<ChatView status={status} />} />
           <Route path="/live" element={<LiveCallView />} />
           <Route path="/memory" element={<MemoryView />} />
           <Route path="/activity" element={<ActivityView />} />
           <Route path="/oneiros" element={<OneirosView />} />
           <Route path="/grupos" element={<GroupsView />} />
+          <Route path="/corazon" element={<CorazonView />} />
+          <Route path="/aprendizaje" element={<AprendizajeView />} />
+          <Route path="/laboratorio" element={<LaboratorioView />} />
+          <Route path="/stickers" element={<StickersView />} />
+          {esDuena && <Route path="/whatsapp" element={<DuenaView />} />}
         </Routes>
       </main>
 
       {/* Barra de Navegación Inferior Móvil */}
-      <NavigationBar />
+      <NavigationBar esDuena={esDuena} />
 
       {/* Modal de Perfil de Usuario */}
       <ProfileModal

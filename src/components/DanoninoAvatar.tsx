@@ -176,7 +176,7 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
         };
       case 'lucid_dreaming':
         return {
-          bg: 'bg-gradient-to-tr from-danonino-cyan via-danonino-violet to-fuchsia-500',
+          bg: 'bg-gradient-to-tr from-danonino-cyan via-danonino-violet to-danonino-rosa',
           blur: 'blur-2xl',
           opacity: 0.65,
           scale: 1.12
@@ -242,7 +242,7 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
             : isSpeaking
             ? 'border-danonino-cyan/50 animate-pulse'
             : isLucidDreaming
-            ? 'border-danonino-cyan/80 animate-spin shadow-[0_0_10px_#06b6d4]'
+            ? 'border-danonino-cyan/80 animate-spin shadow-[0_0_10px_#ff6a45]'
             : isSleeping
             ? 'border-danonino-border/20'
             : isDrowsy
@@ -259,12 +259,12 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
       {/* 3. Esfera central bio-digital */}
       <div className={`relative w-full h-full rounded-full overflow-hidden p-[2px] shadow-2xl transition-all duration-300 ${
         isLucidDreaming
-          ? 'bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-indigo-500'
+          ? 'bg-gradient-to-tr from-danonino-oro via-danonino-rosa to-danonino-ciruela'
           : isDrowsy || isSleeping
-          ? 'bg-gradient-to-tr from-[#1a1c2e] via-[#0f111f] to-[#0a0c16]'
+          ? 'bg-gradient-to-tr from-[#2a2230] via-[#1c171f] to-[#120f14]'
           : 'bg-gradient-to-tr from-danonino-violet via-danonino-blue to-danonino-cyan'
       }`}>
-        <div className="w-full h-full rounded-full bg-gradient-to-b from-[#131b2e] via-[#090d18] to-[#04060c] flex items-center justify-center relative overflow-hidden">
+        <div className="w-full h-full rounded-full bg-gradient-to-b from-[#2a2230] via-[#17131a] to-[#0d0b0f] flex items-center justify-center relative overflow-hidden">
           {/* Ondas internas de resonancia */}
           <div
             className={`absolute w-3/4 h-3/4 rounded-full transition-all duration-200 pointer-events-none ${
@@ -300,22 +300,22 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
                   : isDrowsy
                   ? 'w-3.5 h-1.5 bg-danonino-lavender/60 rounded-full'
                   : isLucidDreaming
-                  ? 'w-4 h-4.5 bg-gradient-to-tr from-cyan-300 to-fuchsia-400 shadow-[0_0_12px_#06b6d4] animate-pulse'
+                  ? 'w-4 h-4.5 bg-gradient-to-tr from-danonino-oro to-danonino-rosa shadow-[0_0_12px_#ff6a45] animate-pulse'
                   : isWaking
-                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#06b6d4]'
+                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#ff6a45]'
                   : isBlinking
                   ? 'w-3.5 h-0.5 bg-danonino-lavender rounded-full'
                   : isListening
-                  ? 'w-3.5 h-4.5 bg-danonino-cyan shadow-[0_0_10px_#06b6d4]'
+                  ? 'w-3.5 h-4.5 bg-danonino-cyan shadow-[0_0_10px_#ff6a45]'
                   : isSpeaking
-                  ? 'w-3.5 h-4 bg-danonino-cyan shadow-[0_0_9px_#06b6d4]'
+                  ? 'w-3.5 h-4 bg-danonino-cyan shadow-[0_0_9px_#ff6a45]'
                   : isThinking
-                  ? 'w-2.5 h-4 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
+                  ? 'w-2.5 h-4 bg-danonino-lavender shadow-[0_0_8px_#8fe0c4]'
                   : isCurious
-                  ? 'w-4 h-4 bg-danonino-lavender shadow-[0_0_10px_#c084fc]'
+                  ? 'w-4 h-4 bg-danonino-lavender shadow-[0_0_10px_#8fe0c4]'
                   : isError
                   ? 'w-3 h-3 bg-amber-400 shadow-[0_0_8px_#f59e0b]'
-                  : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
+                  : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#8fe0c4]'
               }`}
             >
               {!isSleeping && !isDrowsy && !isBlinking && (
@@ -331,22 +331,22 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
                   : isDrowsy
                   ? 'w-3.5 h-1.5 bg-danonino-lavender/60 rounded-full'
                   : isLucidDreaming
-                  ? 'w-4 h-4.5 bg-gradient-to-tr from-cyan-300 to-fuchsia-400 shadow-[0_0_12px_#06b6d4] animate-pulse'
+                  ? 'w-4 h-4.5 bg-gradient-to-tr from-danonino-oro to-danonino-rosa shadow-[0_0_12px_#ff6a45] animate-pulse'
                   : isWaking
-                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#06b6d4]'
+                  ? 'w-3.5 h-2.5 bg-danonino-cyan/80 shadow-[0_0_8px_#ff6a45]'
                   : isBlinking
                   ? 'w-3.5 h-0.5 bg-danonino-lavender rounded-full'
                   : isListening
-                  ? 'w-3.5 h-4.5 bg-danonino-cyan shadow-[0_0_10px_#06b6d4]'
+                  ? 'w-3.5 h-4.5 bg-danonino-cyan shadow-[0_0_10px_#ff6a45]'
                   : isSpeaking
-                  ? 'w-3.5 h-4 bg-danonino-cyan shadow-[0_0_9px_#06b6d4]'
+                  ? 'w-3.5 h-4 bg-danonino-cyan shadow-[0_0_9px_#ff6a45]'
                   : isThinking
-                  ? 'w-2.5 h-4 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
+                  ? 'w-2.5 h-4 bg-danonino-lavender shadow-[0_0_8px_#8fe0c4]'
                   : isCurious
-                  ? 'w-4 h-4 bg-danonino-lavender shadow-[0_0_10px_#c084fc]'
+                  ? 'w-4 h-4 bg-danonino-lavender shadow-[0_0_10px_#8fe0c4]'
                   : isError
                   ? 'w-3 h-3 bg-amber-400 shadow-[0_0_8px_#f59e0b]'
-                  : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#c084fc]'
+                  : 'w-3.5 h-3.5 bg-danonino-lavender shadow-[0_0_8px_#8fe0c4]'
               }`}
             >
               {!isSleeping && !isDrowsy && !isBlinking && (
@@ -379,9 +379,9 @@ const AvatarAnimado: React.FC<DanoninoAvatarProps> = ({
               : isSpeaking
               ? 'bg-danonino-cyan'
               : isLucidDreaming
-              ? 'bg-fuchsia-400 animate-ping'
+              ? 'bg-danonino-rosa animate-ping'
               : isDrowsy
-              ? 'bg-indigo-400'
+              ? 'bg-danonino-ciruela'
               : isSleeping
               ? 'bg-slate-600'
               : isWaking

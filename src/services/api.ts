@@ -19,7 +19,13 @@ import {
   PerfilDanonino,
   GrupoDanonino,
   GrupoDetalle,
-  GrupoMensaje
+  GrupoMensaje,
+  CorazonData,
+  AprendizajeData,
+  LaboratorioData,
+  StickerItem,
+  DuenaResumen,
+  FotoPerfil
 } from '../types';
 
 // Servicio de Danonino en Railway
@@ -92,6 +98,27 @@ const pedirJson = async (ruta: string, metodo: string = 'GET', cuerpo?: unknown)
 };
 
 /** Las imágenes no pueden llevar cabeceras: la sesión viaja en la dirección. */
+export const conSesion = (ruta: string): string => `${getBaseApiUrl()}${ruta}${ruta.includes('?') ? '&' : '?'}user_token=${encodeURIComponent(getUserToken() || '')}`;
+
+/** Achica una imagen en el teléfono antes de subirla (el servidor acepta hasta 4 MB). */
+export const imagenABase64 = (archivo: File, lado = 900): Promise<string> => new Promise((resolve, reject) => {
+  const lector = new FileReader();
+  lector.onerror = () => reject(new Error('No pude leer la imagen'));
+  lector.onload = () => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('Formato de imagen no soportado'));
+    img.onload = () => {
+      const escala = Math.min(1, lado / Math.max(img.width, img.height));
+      const lienzo = document.createElement('canvas');
+      lienzo.width = Math.round(img.width * escala);
+      lienzo.height = Math.round(img.height * escala);
+      lienzo.getContext('2d')?.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+      resolve(lienzo.toDataURL(archivo.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.9));
+    };
+    img.src = String(lector.result);
+  };
+  lector.readAsDataURL(archivo);
+});
 export const avatarUrl = (userId: string, version: number = 0): string =>
   `${getBaseApiUrl()}/agente/${encodeURIComponent(userId)}/avatar?v=${version}&user_token=${encodeURIComponent(getUserToken() || '')}`;
 
@@ -630,6 +657,32 @@ export const api = {
     if (!res.ok) throw new Error(`Error consultando auditoría de memoria: ${res.statusText}`);
     return res.json();
   },
+
+  // ==========================================
+  // INTERIOR DE DANONINO: corazón, aprendizaje, laboratorio de ONEIROS y stickers
+  // ==========================================
+  getCorazon: (): Promise<CorazonData> => pedirJson('/corazon'),
+  getAprendizaje: (): Promise<AprendizajeData> => pedirJson('/aprendizaje'),
+  borrarAprendizaje: (cuerpo: { tipo: 'leccion' | 'cambio' | 'consejo'; texto?: string; ts?: number; whatsapp?: boolean }): Promise<{ ok: boolean }> => pedirJson('/aprendizaje', 'DELETE', cuerpo),
+  getLaboratorio: (): Promise<LaboratorioData> => pedirJson('/oneiros/laboratorio'),
+  accionLaboratorio: (cuerpo: { accion: 'totem' | 'mision' | 'intruso' | 'borrarIntruso' | 'propuesta'; texto?: string; indice?: number; n?: number; decision?: 'aplicar' | 'descartar' }): Promise<{ ok: boolean; resultado: any; config: LaboratorioData['config'] }> => pedirJson('/oneiros/laboratorio', 'POST', cuerpo),
+  getMisStickers: (): Promise<{ ok: boolean; stickers: StickerItem[] }> => pedirJson('/mis-stickers'),
+  subirSticker: (imagenBase64: string, etiquetas: string, descripcion = ''): Promise<{ ok: boolean; sticker: StickerItem }> => pedirJson('/mis-stickers', 'POST', { imagenBase64, etiquetas, descripcion }),
+  editarSticker: (id: string, etiquetas: string[], descripcion?: string): Promise<{ ok: boolean }> => pedirJson(`/mis-stickers/${id}`, 'PUT', { etiquetas, descripcion }),
+  borrarSticker: (id: string): Promise<{ ok: boolean }> => pedirJson(`/mis-stickers/${id}`, 'DELETE'),
+
+  // ==========================================
+  // SOLO LA DUEÑA: diario, estados y perfil de WhatsApp
+  // ==========================================
+  getDuena: (): Promise<DuenaResumen> => pedirJson('/duena/resumen'),
+  publicarEstado: (texto: string): Promise<{ ok: boolean }> => pedirJson('/duena/estado', 'POST', { texto }),
+  editarCola: (ts: number, texto: string): Promise<{ ok: boolean }> => pedirJson(`/duena/cola/${ts}`, 'PUT', { texto }),
+  cancelarCola: (ts: number): Promise<{ ok: boolean }> => pedirJson(`/duena/cola/${ts}`, 'DELETE'),
+  subirFotoPerfil: (imagenBase64: string, emociones: string[]): Promise<{ ok: boolean; foto: FotoPerfil }> => pedirJson('/duena/fotos', 'POST', { imagenBase64, emociones }),
+  editarFotoPerfil: (id: string, emociones: string[]): Promise<{ ok: boolean }> => pedirJson(`/duena/fotos/${id}`, 'PUT', { emociones }),
+  borrarFotoPerfil: (id: string): Promise<{ ok: boolean }> => pedirJson(`/duena/fotos/${id}`, 'DELETE'),
+  configurarPerfil: (cambios: Partial<DuenaResumen['perfil']['config']>): Promise<{ ok: boolean; config: DuenaResumen['perfil']['config'] }> => pedirJson('/duena/perfil', 'PUT', cambios),
+  probarFotoPerfil: (): Promise<{ ok: boolean; foto: { id: string; emocion: string } | null }> => pedirJson('/duena/perfil/probar', 'POST', {}),
 
   // ==========================================
   // EVENTOS SSE PRIVADOS POR USUARIO

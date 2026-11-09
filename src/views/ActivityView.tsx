@@ -66,22 +66,22 @@ export const ActivityView: React.FC = () => {
     switch (type) {
       case 'reflection':
         return {
-          badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-          dot: 'bg-indigo-400 shadow-indigo-500/50',
+          badge: 'bg-danonino-ciruela/20 text-danonino-ciruela border-danonino-ciruela/30',
+          dot: 'bg-danonino-ciruela shadow-danonino-ciruela/50',
           label: 'Reflexión',
           icon: Moon
         };
       case 'fact':
         return {
-          badge: 'bg-cyan-500/20 text-danonino-cyan border-cyan-500/30',
-          dot: 'bg-danonino-cyan shadow-cyan-500/50',
+          badge: 'bg-danonino-oro/20 text-danonino-cyan border-danonino-oro/30',
+          dot: 'bg-danonino-cyan shadow-danonino-oro/50',
           label: 'Hecho observado',
           icon: Brain
         };
       case 'inference':
         return {
-          badge: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-          dot: 'bg-purple-400 shadow-purple-500/50',
+          badge: 'bg-danonino-rosa/20 text-danonino-rosa border-danonino-rosa/30',
+          dot: 'bg-danonino-rosa shadow-danonino-rosa/50',
           label: 'Inferencia',
           icon: Layers
         };

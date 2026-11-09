@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FlaskConical, ArrowUpRight } from 'lucide-react';
 import {
   Sparkles,
   Brain,
@@ -86,6 +88,7 @@ const FilaHipotesis: React.FC<{ h: OneirosHipotesis }> = ({ h }) => (
 );
 
 export const OneirosView: React.FC = () => {
+  const navegar = useNavigate();
   const [observatory, setObservatory] = useState<OneirosObservatoryData | null>(null);
   const [archive, setArchive] = useState<OneirosDream[]>([]);
   const [loading, setLoading] = useState(false);
@@ -311,7 +314,13 @@ export const OneirosView: React.FC = () => {
   const isCurrentlySleeping = sleepState === 'SLEEPING' || sleepState === 'LUCID_DREAMING';
 
   return (
-    <div className="flex flex-col min-h-screen bg-danonino-bg text-danonino-text pb-20">
+    <div className="flex flex-col min-h-screen text-danonino-text pb-28">
+      {/* Acceso al laboratorio de la prueba de realidad */}
+      <button onClick={() => navegar('/laboratorio')} className="mx-4 mt-3 hoja rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition-transform">
+        <FlaskConical className="w-4 h-4 text-danonino-menta" />
+        <span className="flex-1"><span className="font-display text-[16px]">Laboratorio</span><span className="block text-[11px] text-slate-400">¿Real o soñado? Tótem, misión, intrusos y memoria</span></span>
+        <ArrowUpRight className="w-4 h-4 text-slate-500" />
+      </button>
       {/* 1. Encabezado del Observatorio Onírico */}
       <header className="sticky top-0 z-30 bg-danonino-card/90 backdrop-blur-md border-b border-danonino-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -421,13 +430,13 @@ export const OneirosView: React.FC = () => {
                       <span className="text-xs uppercase font-mono tracking-wider text-danonino-muted">Estado del Ciclo:</span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                         sleepState === 'LUCID_DREAMING'
-                          ? 'bg-fuchsia-950/60 text-fuchsia-300 border-fuchsia-500/50 animate-pulse'
+                          ? 'bg-danonino-rosa/60 text-danonino-rosa border-danonino-rosa/50 animate-pulse'
                           : sleepState === 'SLEEPING'
-                          ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/50'
+                          ? 'bg-danonino-ciruela/60 text-danonino-ciruela border-danonino-ciruela/50'
                           : sleepState === 'DROWSY'
                           ? 'bg-amber-950/60 text-amber-300 border-amber-500/50'
                           : sleepState === 'WAKING'
-                          ? 'bg-cyan-950/60 text-cyan-300 border-cyan-500/50'
+                          ? 'bg-danonino-oro/60 text-danonino-oro border-danonino-oro/50'
                           : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50'
                       }`}>
                         {sleepState}
@@ -449,7 +458,7 @@ export const OneirosView: React.FC = () => {
                     <button
                       onClick={handleWakeUp}
                       disabled={isActing}
-                      className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md transition"
+                      className="px-3.5 py-2 rounded-xl bg-danonino-oro hover:bg-danonino-oro text-white text-xs font-semibold flex items-center gap-1.5 shadow-md transition"
                     >
                       <SunMedium className="w-3.5 h-3.5" />
                       Despertar
@@ -513,7 +522,7 @@ export const OneirosView: React.FC = () => {
                     </span>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                       observatory.dream.isLucid
-                        ? 'bg-fuchsia-950/60 text-fuchsia-300 border-fuchsia-500/50 animate-pulse'
+                        ? 'bg-danonino-rosa/60 text-danonino-rosa border-danonino-rosa/50 animate-pulse'
                         : 'bg-danonino-cyan/15 text-danonino-cyan border-danonino-cyan/40'
                     }`}>
                       {observatory.dream.isLucid ? 'Lúcido (Control de Reglas)' : 'Pre-Lúcido'}
@@ -553,7 +562,7 @@ export const OneirosView: React.FC = () => {
                       disabled={!observatory.dream.isLucid && observatory.dream.lucidityScore < 0.6}
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
                         observatory.dream.isLucid || observatory.dream.lucidityScore >= 0.6
-                          ? 'bg-fuchsia-900/40 hover:bg-fuchsia-900/60 text-fuchsia-200 border border-fuchsia-500/50'
+                          ? 'bg-danonino-rosa/40 hover:bg-danonino-rosa/60 text-danonino-rosa border border-danonino-rosa/50'
                           : 'bg-danonino-border/30 text-danonino-muted border border-transparent cursor-not-allowed opacity-60'
                       }`}
                       title={!observatory.dream.isLucid ? 'Requiere lucidez >= 60%' : 'Alterar leyes del mundo'}
@@ -821,7 +830,7 @@ export const OneirosView: React.FC = () => {
                           {rule.value}
                         </div>
                         {rule.reason && (
-                          <div className="text-[9px] text-fuchsia-300/80 italic mt-1 truncate">
+                          <div className="text-[9px] text-danonino-rosa/80 italic mt-1 truncate">
                             {rule.reason}
                           </div>
                         )}
@@ -1222,7 +1231,7 @@ export const OneirosView: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-danonino-card border border-danonino-border rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-fuchsia-400" />
+              <Sliders className="w-4 h-4 text-danonino-rosa" />
               Reescribir Regla del Mundo
             </h3>
             <p className="text-xs text-danonino-muted">
@@ -1279,7 +1288,7 @@ export const OneirosView: React.FC = () => {
               <button
                 onClick={handleModifyRule}
                 disabled={!selectedRule || !newRuleValue || isActing}
-                className="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-xs font-semibold text-white flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-danonino-rosa hover:bg-danonino-rosa text-xs font-semibold text-white flex items-center gap-1.5"
               >
                 {isActing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                 Aplicar Alteración

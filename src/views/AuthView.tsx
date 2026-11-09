@@ -38,18 +38,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, onOpenSetti
   };
 
   return (
-    <div className="min-h-screen bg-danonino-bg flex flex-col justify-center items-center px-4 py-8 text-slate-100">
-      <div className="w-full max-w-sm space-y-6">
-        {/* Cabecera y Branding */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-danonino-card border border-danonino-cyan/40 shadow-neon">
-            <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-tr from-danonino-cyan via-white to-danonino-violet">
-              D
-            </span>
+    <div className="min-h-screen flex flex-col justify-center items-center px-5 py-10 text-slate-100 relative overflow-hidden">
+      <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-danonino-tomate/25 blur-3xl animate-deriva pointer-events-none" />
+      <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-danonino-menta/15 blur-3xl animate-deriva pointer-events-none" style={{ animationDelay: '-7s' }} />
+      <div className="w-full max-w-sm space-y-7 relative entrar">
+        {/* Portada del cuaderno */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="kicker text-danonino-tomate">№ 00</span>
+            <span className="h-px flex-1 bg-danonino-border" />
+            <span className="kicker">tu propio Danonino</span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Danonino Core</h1>
-          <p className="text-xs text-slate-400">
-            Inteligencia Conversacional Privada con Aislamiento Estricto
+          <h1 className="titular text-[52px]">Dano<em>nino</em></h1>
+          <p className="text-[13.5px] text-slate-300 leading-relaxed max-w-[30ch]">
+            Un amigo que siente, sueña y aprende contigo. Cada cuenta tiene el suyo, con su propia memoria.
           </p>
         </div>
 

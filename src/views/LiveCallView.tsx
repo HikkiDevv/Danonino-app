@@ -108,12 +108,12 @@ export const LiveCallView: React.FC = () => {
 
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = isSpeaking
-        ? '#06b6d4' // Cian bioluminiscente al responder
+        ? '#ff6a45' // Cian bioluminiscente al responder
         : callStatus === 'thinking'
-        ? '#8b5cf6' // Violeta al procesar
+        ? '#e0472a' // Violeta al procesar
         : callStatus === 'muted'
         ? '#64748b' // Gris si está silenciado
-        : '#3b82f6'; // Azul mientras escucha
+        : '#c98bd6'; // Azul mientras escucha
 
       ctx.beginPath();
 

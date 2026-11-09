@@ -95,11 +95,11 @@ export const HabitatView: React.FC<HabitatViewProps> = ({ habitat, status }) => 
         }`}
       >
         {/* Ventana con cielo según el ciclo solar */}
-        <div className="absolute top-4 right-4 w-24 h-24 rounded-2xl border-2 border-danonino-border/60 overflow-hidden bg-gradient-to-b from-indigo-950 to-slate-900 p-2 shadow-inner">
+        <div className="absolute top-4 right-4 w-24 h-24 rounded-2xl border-2 border-danonino-border/60 overflow-hidden bg-gradient-to-b from-danonino-ciruela to-slate-900 p-2 shadow-inner">
           <div className="relative w-full h-full">
             {isNight ? (
               <>
-                <div className="w-4 h-4 rounded-full bg-danonino-lavender/80 shadow-[0_0_12px_#c084fc] absolute top-1 right-2" />
+                <div className="w-4 h-4 rounded-full bg-danonino-lavender/80 shadow-[0_0_12px_#8fe0c4] absolute top-1 right-2" />
                 <div className="w-1 h-1 bg-white rounded-full absolute top-6 left-3 animate-ping" />
                 <div className="w-1 h-1 bg-white rounded-full absolute bottom-3 right-5 opacity-70" />
                 <div className="w-1 h-1 bg-white rounded-full absolute top-2 left-6 opacity-60" />

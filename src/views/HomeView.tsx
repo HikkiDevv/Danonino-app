@@ -1,179 +1,105 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  MessageSquare,
-  Brain,
-  Sparkles,
-  ArrowRight,
-  Zap,
-  Activity,
-  Lightbulb,
-  PhoneCall,
-  Clock,
-  Moon
-} from 'lucide-react';
+import { Phone, MessageCircle, ArrowUpRight } from 'lucide-react';
 import { DanoninoAvatar } from '../components/DanoninoAvatar';
-import { AgentStatus } from '../types';
+import { AgentStatus, CorazonData } from '../types';
+import { api, getCurrentUser } from '../services/api';
+import { EMO } from '../components/Interior';
+import { SECCIONES, SECCION_DUENA } from '../components/NavigationBar';
 
 interface HomeViewProps {
   status: AgentStatus | null;
   onRefresh: () => void;
+  esDuena?: boolean;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ status, onRefresh }) => {
+const saludo = (momento?: string) =>
+  momento === 'madrugada' ? ['Qué haces', 'despierto'] :
+  momento === 'mañana' ? ['Buen', 'día'] :
+  momento === 'tarde' ? ['Buenas', 'tardes'] : ['Buenas', 'noches'];
+
+export const HomeView: React.FC<HomeViewProps> = ({ status, esDuena = false }) => {
   const navigate = useNavigate();
-  const [avatarClicks, setAvatarClicks] = useState(0);
+  const [clics, setClics] = useState(0);
+  const [corazon, setCorazon] = useState<CorazonData | null>(null);
+  const yo = getCurrentUser();
+  const [a, b] = saludo(status?.tiempo?.momentoDia);
 
-  const getGreeting = () => {
-    const momento = status?.tiempo?.momentoDia || 'noche';
-    if (momento === 'madrugada') return 'Buenas madrugadas. La calma de la noche es ideal para reflexionar.';
-    if (momento === 'mañana') return 'Buen día. Todo sincronizado para una nueva jornada.';
-    if (momento === 'tarde') return 'Buenas tardes. Actividades y procesos en curso.';
-    return 'Buenas noches. Conversaciones activas y memoria lista.';
-  };
+  useEffect(() => { api.getCorazon().then(setCorazon).catch(() => {}); }, []);
 
-  const avatarModes = ['idle', 'curious', 'speaking', 'thinking'] as const;
-  const currentMode =
-    avatarClicks > 0
-      ? avatarModes[avatarClicks % avatarModes.length]
-      : status?.mode === 'thinking'
-      ? 'thinking'
-      : status?.mode === 'dreaming'
-      ? 'sleeping'
-      : 'idle';
+  const modos = ['idle', 'curious', 'speaking', 'thinking'] as const;
+  const modo = clics > 0 ? modos[clics % modos.length] : status?.mode === 'thinking' ? 'thinking' : status?.mode === 'dreaming' ? 'sleeping' : 'idle';
+  const top = corazon ? [...corazon.barras].sort((x, y) => (y.valor - y.base) - (x.valor - x.base))[0] : null;
+  const colorAnimo = top ? EMO[top.emocion].color : '#ff6a45';
+  const indice = esDuena ? [...SECCIONES, SECCION_DUENA] : SECCIONES;
+
+  const numeros = [
+    { n: status?.usuarioActual?.mensajesPrivados ?? status?.sesion?.mensajesSesion ?? 0, t: 'mensajes' },
+    { n: status?.usuarioActual?.recuerdosSemanticos ?? status?.metricasCognitivas?.memoriasTotales ?? 0, t: 'recuerdos' },
+    { n: status?.usuarioActual?.ciclosSueno ?? status?.metricasCognitivas?.ciclosSueno ?? 0, t: 'sueños' }
+  ];
 
   return (
-    <div className="pb-24 px-4 pt-4 max-w-md mx-auto space-y-5 animate-fade-in">
-      {/* 1. Tarjeta Principal — Danonino Companion */}
-      <div className="glass-panel rounded-3xl p-6 relative overflow-hidden text-center border border-danonino-border/80">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-danonino-cyan via-danonino-lavender to-danonino-violet" />
-
-        <div className="flex flex-col items-center justify-center my-2">
-          <DanoninoAvatar
-            size="xl"
-            mode={currentMode}
-            onClick={() => setAvatarClicks((prev) => prev + 1)}
-          />
-
-          <h2 className="text-xl font-bold mt-4 tracking-tight text-slate-100">Danonino</h2>
-          <p className="text-xs text-danonino-cyan font-mono mt-0.5">
-            {status?.tiempo?.fechaTexto || 'Sincronizado • America/Lima'}
-          </p>
-
-          <p className="text-xs text-slate-300 mt-3 px-2 italic font-normal leading-relaxed">
-            «{getGreeting()}»
-          </p>
+    <div className="px-5 pb-32 pt-3 space-y-7 entrar">
+      <section>
+        <div className="flex items-center gap-2">
+          <span className="kicker text-danonino-tomate">№ 01</span>
+          <span className="h-px flex-1 bg-danonino-border" />
+          <span className="kicker">{status?.tiempo?.fechaTexto || 'Lima'}</span>
         </div>
+        <h1 className="titular text-[44px] mt-4">
+          {a} <em>{b}</em>{yo?.displayName ? <>,<br />{yo.displayName.split(' ')[0]}.</> : '.'}
+        </h1>
+      </section>
 
-        {/* Botones de Acción Primarios */}
-        <div className="grid grid-cols-2 gap-2.5 mt-5">
-          <button
-            onClick={() => navigate('/live')}
-            className="col-span-2 flex items-center justify-center gap-2 bg-gradient-to-r from-danonino-cyan via-danonino-lavender to-danonino-violet text-danonino-bg font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-danonino-cyan/20 transition-all active:scale-95 text-xs"
-          >
-            <PhoneCall className="w-4 h-4 text-danonino-bg" />
-            <span>Hablar con Danonino (Live)</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/chat')}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-danonino-violet to-danonino-blue hover:opacity-90 text-white font-medium py-2.5 px-3 rounded-xl shadow-lg shadow-danonino-violet/20 transition-all active:scale-95 text-xs"
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span>Abrir Chat</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/memory')}
-            className="flex items-center justify-center gap-2 bg-danonino-card hover:bg-danonino-cardHover text-slate-200 border border-danonino-border font-medium py-2.5 px-3 rounded-xl transition-all active:scale-95 text-xs"
-          >
-            <Brain className="w-4 h-4 text-danonino-cyan" />
-            <span>Ver Recuerdos</span>
+      <section className="relative hoja rounded-[28px] p-5 overflow-hidden">
+        <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full blur-3xl opacity-30 animate-deriva" style={{ background: colorAnimo }} />
+        <div className="relative flex items-center gap-4">
+          <div className="relative shrink-0">
+            <div className="absolute inset-[-6px] rounded-full opacity-70 animate-respirar" style={{ boxShadow: `0 0 0 2px ${colorAnimo}55, 0 0 30px ${colorAnimo}40` }} />
+            <DanoninoAvatar size="lg" mode={modo} onClick={() => setClics((c) => c + 1)} />
+          </div>
+          <button onClick={() => navigate('/corazon')} className="text-left flex-1 min-w-0">
+            <span className="kicker" style={{ color: colorAnimo }}>Su ánimo</span>
+            <p className="font-display text-[18px] leading-snug text-slate-100 mt-1">{corazon?.frase || 'Despertando…'}</p>
           </button>
         </div>
-      </div>
-
-      {/* 2. Estadísticas Simplificadas y Comprensibles */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <div className="glass-panel p-3 rounded-2xl text-center border border-danonino-border/70">
-          <MessageSquare className="w-4 h-4 text-danonino-cyan mx-auto mb-1" />
-          <div className="text-base font-bold font-mono text-slate-100">
-            {status?.usuarioActual?.mensajesPrivados ?? (status?.sesion?.mensajesSesion ?? 0)}
-          </div>
-          <div className="text-[10px] text-slate-400">Conversaciones</div>
+        <div className="relative grid grid-cols-[1fr_auto] gap-2.5 mt-5">
+          <button onClick={() => navigate('/live')} className="boton-tomate"><Phone className="w-4 h-4" />Hablar con él</button>
+          <button onClick={() => navigate('/chat')} className="boton-fantasma"><MessageCircle className="w-4 h-4" />Chat</button>
         </div>
+      </section>
 
-        <div className="glass-panel p-3 rounded-2xl text-center border border-danonino-border/70">
-          <Brain className="w-4 h-4 text-danonino-lavender mx-auto mb-1" />
-          <div className="text-base font-bold font-mono text-slate-100">
-            {status?.usuarioActual?.recuerdosSemanticos ?? (status?.metricasCognitivas?.memoriasTotales ?? 0)}
+      <section className="grid grid-cols-3 divide-x divide-danonino-border border-y border-danonino-border">
+        {numeros.map((x) => (
+          <div key={x.t} className="py-3.5 text-center">
+            <div className="titular text-[28px] tabular-nums">{x.n}</div>
+            <div className="kicker mt-1">{x.t}</div>
           </div>
-          <div className="text-[10px] text-slate-400">Recuerdos</div>
-        </div>
+        ))}
+      </section>
 
-        <div className="glass-panel p-3 rounded-2xl text-center border border-danonino-border/70">
-          <Activity className="w-4 h-4 text-danonino-success mx-auto mb-1" />
-          <div className="text-base font-bold font-mono text-slate-100">
-            {status?.usuarioActual?.ciclosSueno ?? (status?.metricasCognitivas?.ciclosSueno ?? 0)}
-          </div>
-          <div className="text-[10px] text-slate-400">Reflexiones</div>
-        </div>
-      </div>
-
-      {/* 3. Actividad Reciente */}
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold tracking-wide text-slate-400 uppercase px-1">
-          Actividad y Memoria
-        </h3>
-
-        <div
-          onClick={() => navigate('/memory')}
-          className="glass-panel p-3.5 rounded-2xl flex items-center justify-between cursor-pointer hover:border-danonino-cyan/40 transition-all active:scale-[0.99]"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-danonino-cyan/15 text-danonino-cyan">
-              <Brain className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-200">Memoria Personal</div>
-              <div className="text-[10px] text-slate-400">Recuerdos aislados con búsqueda instantánea</div>
-            </div>
-          </div>
-          <ArrowRight className="w-4 h-4 text-slate-500" />
-        </div>
-
-        <div
-          onClick={() => navigate('/activity')}
-          className="glass-panel p-3.5 rounded-2xl flex items-center justify-between cursor-pointer hover:border-danonino-violet/40 transition-all active:scale-[0.99]"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-danonino-violet/15 text-danonino-violet">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-200">Línea de Actividad y Reflexiones</div>
-              <div className="text-[10px] text-slate-400">Hechos, inferencias y ciclos autónomos</div>
-            </div>
-          </div>
-          <ArrowRight className="w-4 h-4 text-slate-500" />
-        </div>
-
-        <div
-          onClick={() => navigate('/oneiros')}
-          className="glass-panel p-3.5 rounded-2xl flex items-center justify-between cursor-pointer border border-danonino-lavender/30 hover:border-danonino-lavender transition-all active:scale-[0.99]"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-danonino-lavender/20 text-danonino-lavender">
-              <Moon className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-200">Proyecto ONEIROS</div>
-              <div className="text-[10px] text-slate-400">Sueños lúcidos, reglas alterables y diario narrativo</div>
-            </div>
-          </div>
-          <ArrowRight className="w-4 h-4 text-danonino-lavender" />
-        </div>
-      </div>
+      <section>
+        <span className="kicker">Índice</span>
+        <ol className="mt-2">
+          {indice.map((s, i) => {
+            const Icono = s.icono;
+            return (
+              <li key={s.to}>
+                <button onClick={() => navigate(s.to)} className="w-full flex items-center gap-4 py-3.5 border-b border-danonino-border/70 text-left group active:bg-danonino-card/40">
+                  <span className="font-mono text-[10px] text-slate-500 w-5">{String(i + 2).padStart(2, '0')}</span>
+                  <Icono className="w-4 h-4 shrink-0" style={{ color: s.color }} />
+                  <span className="flex-1">
+                    <span className="font-display text-[19px] text-slate-100 leading-none">{s.titulo}</span>
+                    <span className="block text-[11.5px] text-slate-500 mt-1">{s.nota}</span>
+                  </span>
+                  <ArrowUpRight className="w-4 h-4 text-slate-600 group-active:text-danonino-tomate" />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
     </div>
   );
 };

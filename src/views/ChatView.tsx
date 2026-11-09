@@ -579,7 +579,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ status }) => {
                   {/* Barra de Acciones y Hora de Perú */}
                   <div
                     className={`mt-1 flex items-center justify-between gap-3 text-[9px] pt-1 border-t ${
-                      isUser ? 'border-white/15 text-blue-100/70' : 'border-danonino-border/40 text-slate-400'
+                      isUser ? 'border-white/15 text-danonino-ciruela/70' : 'border-danonino-border/40 text-slate-400'
                     }`}
                   >
                     {/* Timestamp con Hora de Perú */}

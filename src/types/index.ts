@@ -403,3 +403,55 @@ export interface OneirosObservatoryData {
   sleepState: SleepCycleState;
   sleepMetrics: OneirosSleepMetrics;
 }
+
+// ==========================================
+// Interior de Danonino (2026-11-09): corazón, aprendizaje, laboratorio, stickers y sección de la dueña
+// ==========================================
+export type NombreEmocion = 'alegria' | 'tristeza' | 'enojo' | 'ansiedad' | 'sorpresa' | 'ternura' | 'verguenza' | 'orgullo' | 'aburrimiento' | 'curiosidad';
+
+export interface BarraEmocion { emocion: NombreEmocion; valor: number; base: number; }
+export interface EventoEmocion { ts: number; causa: string; cambios: Partial<Record<NombreEmocion, number>>; origen?: string; }
+export interface VinculoEspecial { nombre: string; telefono: string; nota: string; tipo: 'romance' | 'rivalidad' | 'nota'; romance: number | null; }
+
+export interface CorazonData {
+  ok: boolean;
+  esDuena: boolean;
+  barras: BarraEmocion[];
+  eventos: EventoEmocion[];
+  frase: string;
+  vinculo: { afecto: number; interacciones: number; rencor: number; descripcion: string | null; rencor_texto?: string | null };
+  whatsapp?: { barras: BarraEmocion[]; eventos: EventoEmocion[]; vinculos: VinculoEspecial[]; favoritos: number };
+}
+
+export interface Leccion { texto: string; ts: number; veces: number; }
+export interface CambioOpinion { tema: string; antes: string; ahora: string; ts: number; }
+export interface Consejo { tipo?: string; pregunta: string; respuesta: string; ts: number; }
+export interface AprendizajeBloque { lecciones: Leccion[]; cambios: CambioOpinion[]; consejos: Consejo[]; }
+export interface AprendizajeData extends AprendizajeBloque { ok: boolean; whatsapp?: AprendizajeBloque; }
+
+export interface PropuestaMemoria { n: number; tipo: 'duplicado' | 'contradiccion'; ids: string[]; borrar: string[]; texto: string; ts: number; }
+export interface ExamenOneiros extends OneirosAprendizaje {
+  calibracion?: string | null;
+  confusiones?: string | null;
+  precisionPorClase?: Record<'real' | 'sonado' | 'mezcla', number | null>;
+  trampas?: { intrusos: number; intrusosDetectados: number; falsosDespertares: number; falsosDetectados: number };
+}
+export interface LaboratorioData {
+  ok: boolean;
+  config: { totem: string; mision: string | null; intrusos: string[] };
+  simbolos: { simbolo: string; veces: number; significado: string | null }[];
+  propuestas: PropuestaMemoria[];
+  examen: ExamenOneiros;
+}
+
+export interface StickerItem { id: string; etiquetas: string[]; descripcion: string; animado: boolean; usos: number; propio: boolean; }
+
+export interface FotoPerfil { id: string; emociones: string[]; agregada: number; }
+export interface DuenaResumen {
+  ok: boolean;
+  conectado: boolean;
+  diario: { fecha: string; tema: string; texto: string }[];
+  cola: { ts: number; tipo: string; texto: string; cancion: string | null }[];
+  publicados: { id: string; texto: string; ts: number; tipo: string; vistas: number; respuestas: number }[];
+  perfil: { fotos: FotoPerfil[]; config: { activo: boolean; cadaHoras: number; infoAuto: boolean; infoManual: string }; ultima: { id: string; emocion: string; ts: number } | null; emociones: string[] };
+}
