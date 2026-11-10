@@ -455,3 +455,17 @@ export interface DuenaResumen {
   publicados: { id: string; texto: string; ts: number; tipo: string; vistas: number; respuestas: number }[];
   perfil: { fotos: FotoPerfil[]; config: { activo: boolean; cadaHoras: number; infoAuto: boolean; infoManual: string }; ultima: { id: string; emocion: string; ts: number } | null; emociones: string[] };
 }
+
+// Su mundo interior (2026-11-10)
+export interface MundoGusto { categoria: string; valor: string; detalle: string | null; fijo: boolean; desde: number | null; }
+export interface MundoDescubrimiento { tipo: string; valor: string; porque: string; ts: number; }
+export interface MundoDibujo { id: string; tema: string; origen: 'propio' | 'sueno'; ts: number; publicado: boolean; }
+export interface MundoOpinion { tema: string; antes: string; ahora: string; ts: number; quien?: string; }
+export interface MundoData {
+  ok: boolean;
+  gustos: MundoGusto[];
+  descubrimientos: MundoDescubrimiento[];
+  dibujos: MundoDibujo[];
+  opiniones: MundoOpinion[];
+  pasatiempo: { nombre: string; unidad: string; desde: number; coleccion: { texto: string; ts: number }[] } | null;
+}

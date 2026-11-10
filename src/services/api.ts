@@ -21,7 +21,7 @@ import {
   GrupoDetalle,
   GrupoMensaje,
   CorazonData,
-  AprendizajeData,
+  AprendizajeData, MundoData,
   LaboratorioData,
   StickerItem,
   DuenaResumen,
@@ -663,6 +663,7 @@ export const api = {
   // ==========================================
   getCorazon: (): Promise<CorazonData> => pedirJson('/corazon'),
   getAprendizaje: (): Promise<AprendizajeData> => pedirJson('/aprendizaje'),
+  getMundo: (): Promise<MundoData> => pedirJson('/mundo'),
   borrarAprendizaje: (cuerpo: { tipo: 'leccion' | 'cambio' | 'consejo'; texto?: string; ts?: number; whatsapp?: boolean }): Promise<{ ok: boolean }> => pedirJson('/aprendizaje', 'DELETE', cuerpo),
   getLaboratorio: (): Promise<LaboratorioData> => pedirJson('/oneiros/laboratorio'),
   accionLaboratorio: (cuerpo: { accion: 'totem' | 'mision' | 'intruso' | 'borrarIntruso' | 'propuesta'; texto?: string; indice?: number; n?: number; decision?: 'aplicar' | 'descartar' }): Promise<{ ok: boolean; resultado: any; config: LaboratorioData['config'] }> => pedirJson('/oneiros/laboratorio', 'POST', cuerpo),

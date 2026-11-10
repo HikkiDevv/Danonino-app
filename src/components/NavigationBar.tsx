@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { House, MessageCircle, Phone, Users, LayoutGrid, Heart, BookOpen, Moon, FlaskConical, Brain, Activity, Sticker, Smartphone, X } from 'lucide-react';
+import { House, MessageCircle, Phone, Users, LayoutGrid, Heart, BookOpen, Moon, FlaskConical, Brain, Activity, Sticker, Smartphone, Palette, X } from 'lucide-react';
 
 export const SECCIONES = [
   { to: '/corazon', titulo: 'Corazón', nota: 'Lo que siente ahora', icono: Heart, color: '#ff8fa8' },
   { to: '/aprendizaje', titulo: 'Aprendizaje', nota: 'Lecciones y opiniones', icono: BookOpen, color: '#f2bd5c' },
+  { to: '/mundo', titulo: 'Su mundo', nota: 'Gustos, hallazgos y dibujos', icono: Palette, color: '#ff8fa8' },
   { to: '/oneiros', titulo: 'ONEIROS', nota: 'Sus sueños', icono: Moon, color: '#8fe0c4' },
   { to: '/laboratorio', titulo: 'Laboratorio', nota: '¿Real o soñado?', icono: FlaskConical, color: '#8fe0c4' },
   { to: '/memory', titulo: 'Memoria', nota: 'Lo que sabe de ti', icono: Brain, color: '#ff6a45' },
