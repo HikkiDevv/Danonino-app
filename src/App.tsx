@@ -11,6 +11,7 @@ import { OneirosView } from './views/OneirosView';
 import { GroupsView } from './views/GroupsView';
 import { CorazonView } from './views/CorazonView';
 import { MundoView } from './views/MundoView';
+import { JuegosView } from './views/JuegosView';
 import { AprendizajeView } from './views/AprendizajeView';
 import { LaboratorioView } from './views/LaboratorioView';
 import { StickersView } from './views/StickersView';
@@ -191,6 +192,7 @@ const AppLayout: React.FC = () => {
           <Route path="/corazon" element={<CorazonView />} />
           <Route path="/aprendizaje" element={<AprendizajeView />} />
           <Route path="/mundo" element={<MundoView />} />
+          <Route path="/juegos" element={<JuegosView />} />
           <Route path="/laboratorio" element={<LaboratorioView />} />
           <Route path="/stickers" element={<StickersView />} />
           {esDuena && <Route path="/whatsapp" element={<DuenaView />} />}

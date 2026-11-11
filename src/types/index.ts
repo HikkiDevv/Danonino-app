@@ -461,6 +461,10 @@ export interface MundoGusto { categoria: string; valor: string; detalle: string 
 export interface MundoDescubrimiento { tipo: string; valor: string; porque: string; ts: number; }
 export interface MundoDibujo { id: string; tema: string; origen: 'propio' | 'sueno'; ts: number; publicado: boolean; }
 export interface MundoOpinion { tema: string; antes: string; ahora: string; ts: number; quien?: string; }
+export interface JuegosMascota { nombre: string; especie: string; especieNombre: string; etapa: string; estado: string; hambre: number; animo: number; energia: number; xp: number; nacio: number; cuidadores: { nombre: string; veces: number }[]; }
+export interface JuegosRanking { nombre: string; puntos: number; aciertos: number; }
+export interface JuegosGrupo { clave: string; nombre: string; miembros: number; juntos: string | null; mascota: JuegosMascota | null; ranking: JuegosRanking[]; amigoSecreto: { estado: string; participantes: string[]; presupuesto: string; fecha: string } | null; }
+export interface JuegosData { ok: boolean; vinculado: boolean; grupos: JuegosGrupo[]; }
 export interface MundoData {
   ok: boolean;
   gustos: MundoGusto[];
